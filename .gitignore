@@ -1,0 +1,35 @@
+# Downloads e snapshots gerados em runtime
+downloads_serpro/
+serpro_snapshots_logs/
+
+# Banco de dados local
+base_dados.db
+*.db-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OpenCode
+.opencode/
