@@ -626,19 +626,48 @@ def executar_em_loop(intervalo_minutos=60, limite_tentativas=None):
             print(f"\n⏳ Próxima execução em {intervalo_minutos} minuto(s)...")
             time.sleep(intervalo_minutos * 60)
 
-def baixar_somente(ano=None):
-    """Faz apenas o download do arquivo do SERPRO sem importar para o banco"""
+def baixar_somente(ano=None, uf="SC"):
+    """Faz apenas o download do arquivo do SERPRO sem importar para o banco.
+
+    Args:
+        ano: int, str ou lista de até 4 anos (ex: 2026 ou [2023,2024,2025,2026]).
+             Se None, baixa todos os anos.
+        uf: sigla do estado (default "SC").
+    """
     print("\n" + "="*60)
     print("MODO: BAIXAR SOMENTE")
     print("="*60)
-    
-    url_base = "https://dd.serpro.gov.br/publico/single/?appid=7979697b-ad3d-4b28-a5bf-9cd48ea9eae7&obj=vVDJ&theme=tema%20serpro&opt=ctxmenu,currsel&identity=preview_hdmBV"
-    
-    if ano:
-        url = f"{url_base}&select=$::Ano%20de%20Abertura,{ano}"
-        print(f"Filtrando por ano: {ano}")
+
+    # UF sempre aplicada (default SC)
+    uf = (uf or "SC").strip().upper()
+    url_base = (
+        "https://dd.serpro.gov.br/publico/single/?"
+        "appid=7979697b-ad3d-4b28-a5bf-9cd48ea9eae7"
+        "&obj=vVDJ"
+        "&opt=ctxmenu,currsel"
+        f"&select=$::UF,{uf}"
+    )
+
+    # Normaliza 'ano' para lista
+    if ano is None:
+        anos = []
+    elif isinstance(ano, (list, tuple, set)):
+        anos = [str(a).strip() for a in ano if str(a).strip()]
+    else:
+        # aceita "2023,2024,2025,2026" ou "2023 2024 2025 2026" ou "2026"
+        anos = [a.strip() for a in str(ano).replace(" ", ",").split(",") if a.strip()]
+
+    if anos:
+        if len(anos) > 4:
+            print(f"⚠ Recebidos {len(anos)} anos, usando apenas os 4 primeiros: {anos[:4]}")
+            anos = anos[:4]
+        anos_csv = ",".join(anos)
+        url = f"{url_base}&select=$::Ano%20de%20Abertura,{anos_csv}"
+        print(f"Filtrando UF: {uf}")
+        print(f"Filtrando por anos: {anos_csv}")
     else:
         url = url_base
+        print(f"Filtrando UF: {uf}")
         print("Baixando todos os anos")
     
     try:
@@ -822,6 +851,139 @@ def executar_ciclo_completo():
     return True
 
 
+def arquivo_eh_vazio(caminho_arquivo, max_bytes=50000):
+    """Detecta se o Excel baixado está vazio/sem dados.
+
+    O SERPRO retorna um Excel com apenas cabeçalho (ou quase vazio) quando
+    a combinação UF+anos não tem registros. Critérios:
+      1) arquivo não existe ou tem < max_bytes (geralmente < 50KB = sem dados)
+      2) ou tem 0-1 linhas de dados (só cabeçalho)
+    """
+    if not os.path.exists(caminho_arquivo):
+        return True
+    tamanho = os.path.getsize(caminho_arquivo)
+    if tamanho < max_bytes:
+        return True
+    try:
+        wb = load_workbook(filename=caminho_arquivo, read_only=True, data_only=True)
+        ws = wb.active
+        # max_row conta linhas usadas; se for <= 1 só tem cabeçalho
+        n_linhas = ws.max_row or 0
+        wb.close()
+        if n_linhas <= 1:
+            return True
+    except Exception as e:
+        print(f"  ⚠ Erro ao inspecionar Excel: {e}")
+        return False
+    return False
+
+
+def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
+                    intervalo_minutos=0, limite_lotes=None):
+    """Baixa todos os anos disponíveis de SC, em lotes de 4, até o arquivo vir vazio.
+
+    A cada lote bem-sucedido, importa o Excel para o banco SQLite.
+
+    Args:
+        ano_inicio: ano mais antigo a tentar (default: 5 anos atrás do atual)
+        ano_fim:    ano mais recente a tentar (default: ano atual)
+        tamanho_lote: anos por requisição (default 4, máximo aceito pelo SERPRO)
+        intervalo_minutos: espera entre lotes (default 0)
+        limite_lotes: para após N lotes (None = sem limite; só para quando vier vazio)
+    """
+    from datetime import datetime
+    agora = datetime.now()
+    if ano_fim is None:
+        ano_fim = agora.year
+    if ano_inicio is None:
+        ano_inicio = max(ano_fim - 30, 2000)  # SERPRO tem dados desde ~2000
+
+    print("\n" + "="*70)
+    print("BAIXAR TODOS SC - MODO PRODUCAO")
+    print(f"  UF: SC | Range: {ano_inicio}..{ano_fim} | Lote: {tamanho_lote} anos")
+    print(f"  Intervalo entre lotes: {intervalo_minutos} min | Limite: {limite_lotes or 'infinito'}")
+    print("="*70)
+
+    # Gera lista de anos em ordem DECRESCENTE (do mais recente pro mais antigo)
+    # É mais comum o SERPRO ter dados nos anos recentes; paramos quando vier vazio.
+    todos_anos = list(range(ano_fim, ano_inicio - 1, -1))
+
+    total_baixados = 0
+    total_importados = 0
+    total_vazios = 0
+    lote_num = 0
+
+    # Itera em lotes
+    for i in range(0, len(todos_anos), tamanho_lote):
+        lote = todos_anos[i:i + tamanho_lote]
+        lote_num += 1
+
+        if limite_lotes and lote_num > limite_lotes:
+            print(f"\n✓ Limite de {limite_lotes} lotes atingido. Encerrando.")
+            break
+
+        print(f"\n>>> LOTE {lote_num}: anos {lote} ({', '.join(str(a) for a in lote)})")
+        print("-" * 70)
+
+        # 1) Baixar
+        sucesso = baixar_somente(ano=lote, uf="SC")
+        if not sucesso:
+            print(f"  ✗ Falha no download do lote {lote_num}. Continuando...")
+            continue
+
+        # 2) Encontrar o .xlsx recém-baixado
+        arquivos = [f for f in os.listdir(download_folder)
+                    if f.endswith('.xlsx') and not f.endswith('.crdownload')]
+        if not arquivos:
+            print(f"  ✗ Nenhum .xlsx encontrado após download do lote {lote_num}")
+            continue
+        caminho = os.path.join(download_folder, arquivos[0])
+        tamanho = os.path.getsize(caminho)
+        print(f"  Arquivo: {arquivos[0]} ({tamanho/1024/1024:.2f} MB)")
+
+        # 3) Verificar se veio vazio (fim do histórico)
+        if arquivo_eh_vazio(caminho):
+            print(f"  ⏭ Arquivo VAZIO detectado (sem dados para {lote}). Fim do histórico.")
+            total_vazios += 1
+            # Remove o arquivo vazio para não poluir
+            try:
+                os.remove(caminho)
+                print(f"  🗑 Removido: {arquivos[0]}")
+            except Exception:
+                pass
+            # 2 vazios consecutivos = fim definitivo
+            if total_vazios >= 2:
+                print("\n✓ Dois lotes vazios consecutivos. Histórico encerrado.")
+                break
+            continue
+
+        # 4) Resetar contador de vazios e importar
+        total_vazios = 0
+        total_baixados += 1
+        print(f"  Importando para o banco SQLite...")
+        if importar_excel_para_sqlite(caminho):
+            total_importados += 1
+            print(f"  ✓ Lote {lote_num} OK ({total_importados} importados no total)")
+        else:
+            print(f"  ✗ Falha na importação do lote {lote_num}")
+
+        # 5) Intervalo entre lotes (se houver mais)
+        if intervalo_minutos > 0 and (i + tamanho_lote) < len(todos_anos):
+            if limite_lotes is None or lote_num < limite_lotes:
+                print(f"\n⏳ Aguardando {intervalo_minutos} min antes do proximo lote...")
+                time.sleep(intervalo_minutos * 60)
+
+    print("\n" + "="*70)
+    print("RESUMO DA PRODUCAO")
+    print("="*70)
+    print(f"  Lotes processados: {lote_num}")
+    print(f"  Downloads OK:      {total_baixados}")
+    print(f"  Importacoes OK:    {total_importados}")
+    print(f"  Lotes vazios:      {total_vazios}")
+    print("="*70)
+    return total_importados > 0
+
+
 if __name__ == "__main__":
     import argparse
     
@@ -830,14 +992,79 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Exportador SERPRO")
     parser.add_argument("acao", nargs="?", default="completo",
-                        choices=["completo", "baixar", "importar", "info"],
-                        help="Acoes: completo (padrao), baixar, importar, info")
+                        choices=["completo", "baixar", "importar", "info", "todos-sc"],
+                        help="Acoes: completo (padrao), baixar, importar, info, todos-sc")
+    parser.add_argument("--ano-inicio", type=int, default=None,
+                        help="(todos-sc) Ano inicial do range (default: 5 anos atras)")
+    parser.add_argument("--ano-fim", type=int, default=None,
+                        help="(todos-sc) Ano final do range (default: ano atual)")
+    parser.add_argument("--lote", type=int, default=4,
+                        help="(todos-sc) Tamanho do lote de anos (max 4, default 4)")
+    parser.add_argument("--intervalo", type=int, default=0,
+                        help="(todos-sc) Minutos de espera entre lotes (default 0)")
+    parser.add_argument("--limite-lotes", type=int, default=None,
+                        help="(todos-sc) Para apos N lotes (default: ate arquivo vazio)")
     parser.add_argument("--arquivo", "-f", type=str, default=None,
                         help="Caminho do arquivo para importar (usado com acao=importar)")
     parser.add_argument("--ano", "-y", type=str, default=None,
-                        help="Ano para filtrar no download (ex: 2026)")
-    
+                        help="Anos para filtrar no download. Use virgulas ou espacos para multiplos "
+                             "anos (max 4). Ex: --ano 2026 | --ano 2023,2024,2025,2026")
+    parser.add_argument("--uf", "-u", type=str, default="SC",
+                        help="Sigla da UF para filtrar (padrao: SC). Ex: --uf SC, --uf SP, --uf RJ")
+    parser.add_argument("--exemplos", action="store_true",
+                        help="Mostra exemplos de uso e sai")
+
     args = parser.parse_args()
+
+    if args.exemplos:
+        print("""
+============================================================
+EXEMPLOS DE USO - Exportador SERPRO (Mapa de Empresas)
+============================================================
+
+URL base montada:
+  https://dd.serpro.gov.br/publico/single/?appid=...&obj=vVDJ
+  &opt=ctxmenu,currsel
+  &select=$::UF,SC
+  &select=$::Ano%20de%20Abertura,2023,2024,2025,2026
+
+1) Baixar todos os anos, UF=SC (padrao):
+   python exportador_dados_serpro.py baixar
+
+2) Baixar apenas 2026 (SC):
+   python exportador_dados_serpro.py baixar --ano 2026
+   python exportador_dados_serpro.py baixar -y 2026
+
+3) Baixar varios anos (ate 4) - SC:
+   python exportador_dados_serpro.py baixar --ano 2023,2024,2025,2026
+   python exportador_dados_serpro.py baixar -y "2023 2024 2025 2026"
+
+4) Trocar a UF (ex: Sao Paulo):
+   python exportador_dados_serpro.py baixar --uf SP --ano 2024,2025
+
+5) Ciclo completo (baixar + importar) com varios anos:
+   python exportador_dados_serpro.py completo -y 2023,2024,2025,2026
+
+6) Apenas importar o ultimo download:
+   python exportador_dados_serpro.py importar
+
+7) Status do sistema (banco + downloads):
+   python exportador_dados_serpro.py info
+
+8) PRODUCAO: baixar TODOS os anos de SC, em lotes de 4, parando quando vier vazio:
+   python exportador_dados_serpro.py todos-sc
+
+9) Producao com range customizado (ex: 2010 a 2026):
+   python exportador_dados_serpro.py todos-sc --ano-inicio 2010 --ano-fim 2026
+
+10) Producao com intervalo de 5 min entre lotes (para nao sobrecarregar o SERPRO):
+    python exportador_dados_serpro.py todos-sc --intervalo 5
+
+11) Producao limitada a 5 lotes (teste):
+    python exportador_dados_serpro.py todos-sc --limite-lotes 5
+============================================================
+""")
+        sys.exit(0)
     
     if args.acao == "info":
         print("=== STATUS DO SISTEMA ===")
@@ -866,24 +1093,38 @@ if __name__ == "__main__":
             print(f"  Erro ao verificar banco: {e}")
     
     elif args.acao == "baixar":
-        baixar_somente(ano=args.ano)
-    
+        baixar_somente(ano=args.ano, uf=args.uf)
+
     elif args.acao == "importar":
         if args.arquivo:
             importar_excel_para_sqlite(args.arquivo)
         else:
             importar_ultimo_download()
-    
+
     elif args.acao == "completo":
         # Para ciclo completo, usa ano se especificado
         if args.ano:
             # Baixar com ano + importar
-            if not baixar_somente(ano=args.ano):
+            if not baixar_somente(ano=args.ano, uf=args.uf):
                 print("\n✗ Falha no download")
             else:
                 importar_ultimo_download()
         else:
-            executar_ciclo_completo()
+            # Sem filtro de ano, mas com UF
+            if not baixar_somente(uf=args.uf):
+                print("\n✗ Falha no download")
+            else:
+                importar_ultimo_download()
+
+    elif args.acao == "todos-sc":
+        # Modo producao: baixa todos os anos de SC em lotes de 4 ate arquivo vazio
+        baixar_todos_sc(
+            ano_inicio=args.ano_inicio,
+            ano_fim=args.ano_fim,
+            tamanho_lote=args.lote,
+            intervalo_minutos=args.intervalo,
+            limite_lotes=args.limite_lotes,
+        )
     
     else:
         parser.print_help()
