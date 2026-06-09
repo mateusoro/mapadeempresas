@@ -5,6 +5,7 @@ serpro_snapshots_logs/
 # Banco de dados local
 base_dados.db
 base_dados_backup_*.db
+base_dados_pre_otimtexto_*.db
 *.db-journal
 
 # Python
