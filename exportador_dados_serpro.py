@@ -908,6 +908,16 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
         cursor.close()
         cnxn.close()
 
+        # Roda a otimização de texto automaticamente após a importação
+        try:
+            import subprocess
+            script_otimizar = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'otimizar_texto.py')
+            print(f"\n[OTIMIZACAO] Executando otimização textual ({script_otimizar})...")
+            subprocess.run([sys.executable, script_otimizar, '--no-backup'], check=True)
+            print("[OTIMIZACAO] Otimização concluída com sucesso!")
+        except Exception as e:
+            print(f"[OTIMIZACAO] Erro ao rodar otimização automática: {e}")
+
         print("\n" + "="*60)
         print(f"IMPORTACAO CONCLUIDA!")
         print(f"Linhas lidas do Excel:   {row_num}")
