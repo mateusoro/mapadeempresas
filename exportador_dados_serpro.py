@@ -775,6 +775,8 @@ def baixar_somente(ano=None, uf="SC"):
         
         arquivos = [f for f in os.listdir(download_folder) if f.endswith('.xlsx') and not f.endswith('.crdownload')]
         if arquivos:
+            # Pega o mais recente por mtime
+            arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
             arquivo_baixado = os.path.join(download_folder, arquivos[0])
             print(f"\n✓ Download concluido: {arquivo_baixado}")
             return True
@@ -816,16 +818,19 @@ def aguardar_download_terminar(intervalo=5, timeout_max=600):
 
 
 def importar_ultimo_download():
-    """Importa o último arquivo baixado para o banco SQLite"""
-    arquivos = [f for f in os.listdir(download_folder) if f.endswith('.xlsx') and not f.endswith('.crdownload')]
-    
+    """Importa o último arquivo baixado para o banco SQLite (o mais recente por mtime)."""
+    arquivos = [f for f in os.listdir(download_folder)
+                if f.endswith('.xlsx') and not f.endswith('.crdownload')]
+
     if not arquivos:
         print("✗ Nenhum arquivo .xlsx encontrado na pasta de downloads")
         return False
-    
+
+    # Pega o MAIS RECENTE por mtime (evita pegar Excel antigo de runs anteriores)
+    arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
     arquivo_baixado = os.path.join(download_folder, arquivos[0])
     print(f"\nArquivo encontrado: {arquivo_baixado}")
-    
+
     return importar_excel_para_sqlite(arquivo_baixado)
 
 
@@ -931,12 +936,14 @@ def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
             print(f"  ✗ Falha no download do lote {lote_num}. Continuando...")
             continue
 
-        # 2) Encontrar o .xlsx recém-baixado
+        # 2) Encontrar o .xlsx recém-baixado (o mais recente, ordenado por mtime)
         arquivos = [f for f in os.listdir(download_folder)
                     if f.endswith('.xlsx') and not f.endswith('.crdownload')]
         if not arquivos:
             print(f"  ✗ Nenhum .xlsx encontrado após download do lote {lote_num}")
             continue
+        # Pega o MAIS RECENTE por mtime (evita pegar Excel antigo de runs anteriores)
+        arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
         caminho = os.path.join(download_folder, arquivos[0])
         tamanho = os.path.getsize(caminho)
         print(f"  Arquivo: {arquivos[0]} ({tamanho/1024/1024:.2f} MB)")
@@ -1070,10 +1077,13 @@ URL base montada:
         print("=== STATUS DO SISTEMA ===")
         arquivos = [f for f in os.listdir(download_folder) if f.endswith('.xlsx') and not f.endswith('.crdownload')]
         if arquivos:
-            print(f"Arquivos disponiveis para importacao:")
+            # Ordena por mtime desc (mais recente primeiro)
+            arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
+            print(f"Arquivos disponiveis para importacao (mais recente primeiro):")
             for f in arquivos:
                 tamanho = os.path.getsize(os.path.join(download_folder, f))
-                print(f"  - {f} ({tamanho} bytes)")
+                mtime = datetime.fromtimestamp(os.path.getmtime(os.path.join(download_folder, f)))
+                print(f"  - {f} ({tamanho/1024/1024:.2f} MB) - {mtime:%Y-%m-%d %H:%M:%S}")
         else:
             print("Nenhum arquivo .xlsx na pasta de downloads")
         
