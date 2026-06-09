@@ -718,49 +718,63 @@ def executar_em_loop(intervalo_minutos=60, limite_tentativas=None):
             print(f"\n⏳ Próxima execução em {intervalo_minutos} minuto(s)...")
             time.sleep(intervalo_minutos * 60)
 
-def baixar_somente(ano=None, uf="SC"):
-    """Faz apenas o download do arquivo do SERPRO sem importar para o banco.
+# Meses disponiveis no SERPRO (portugues com acento)
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+
+def baixar_somente(ano, mes):
+    """Baixa o Excel do SERPRO para 1 mes e 1 ano especificos (BRASIL INTEIRO, sem filtro de UF).
 
     Args:
-        ano: int, str ou lista de até 4 anos (ex: 2026 ou [2023,2024,2025,2026]).
-             Se None, baixa todos os anos.
-        uf: sigla do estado (default "SC").
+        ano: ano (int ou str), ex: 2026
+        mes: mes (int 1-12) ou nome PT ('Janeiro'..'Dezembro')
+
+    Fluxo:
+        URL: select=$::Ano%20de%20Abertura,2026&select=$::M%C3%AAs%20de%20Abertura,Janeiro
+        Baixa o .xlsx e retorna o caminho do arquivo.
+        Nao importa no banco - quem importa eh a funcao de producao.
     """
     print("\n" + "="*60)
-    print("MODO: BAIXAR SOMENTE")
+    print(f"MODO: BAIXAR 1 MES")
     print("="*60)
 
-    # UF sempre aplicada (default SC)
-    uf = (uf or "SC").strip().upper()
-    url_base = (
+    # Normaliza ano
+    ano = str(ano).strip()
+    if not ano.isdigit() or len(ano) != 4:
+        print(f"✗ Ano invalido: {ano}")
+        return None
+
+    # Normaliza mes
+    if isinstance(mes, int):
+        if mes < 1 or mes > 12:
+            print(f"✗ Mes invalido: {mes}")
+            return None
+        mes_nome = MESES_PT[mes - 1]
+    else:
+        mes_nome = str(mes).strip().capitalize()
+        if mes_nome not in MESES_PT:
+            # Tenta match parcial
+            for m in MESES_PT:
+                if m.lower().startswith(mes_nome.lower()[:3]):
+                    mes_nome = m
+                    break
+            else:
+                print(f"✗ Mes invalido: {mes}")
+                return None
+
+    print(f"Filtrando: Ano={ano} | Mes={mes_nome} | Brasil inteiro")
+
+    url = (
         "https://dd.serpro.gov.br/publico/single/?"
         "appid=7979697b-ad3d-4b28-a5bf-9cd48ea9eae7"
         "&obj=vVDJ"
         "&opt=ctxmenu,currsel"
-        f"&select=$::UF,{uf}"
+        f"&select=$::Ano%20de%20Abertura,{ano}"
+        f"&select=$::M%C3%AAs%20de%20Abertura,{mes_nome}"
     )
-
-    # Normaliza 'ano' para lista
-    if ano is None:
-        anos = []
-    elif isinstance(ano, (list, tuple, set)):
-        anos = [str(a).strip() for a in ano if str(a).strip()]
-    else:
-        # aceita "2023,2024,2025,2026" ou "2023 2024 2025 2026" ou "2026"
-        anos = [a.strip() for a in str(ano).replace(" ", ",").split(",") if a.strip()]
-
-    if anos:
-        if len(anos) > 4:
-            print(f"⚠ Recebidos {len(anos)} anos, usando apenas os 4 primeiros: {anos[:4]}")
-            anos = anos[:4]
-        anos_csv = ",".join(anos)
-        url = f"{url_base}&select=$::Ano%20de%20Abertura,{anos_csv}"
-        print(f"Filtrando UF: {uf}")
-        print(f"Filtrando por anos: {anos_csv}")
-    else:
-        url = url_base
-        print(f"Filtrando UF: {uf}")
-        print("Baixando todos os anos")
     
     try:
         global driver
@@ -775,13 +789,13 @@ def baixar_somente(ano=None, uf="SC"):
         salvar_snapshot("00_pagina_inicial")
         
         if not aguardar_carregamento_pagina():
-            return False
-        
+            return None
+
         if not aguardar_elemento_qv_inner_object(intervalo=10, timeout_max=600):
-            return False
-        
+            return None
+
         if not clicar_botao_direito_meio_tela():
-            return False
+            return None
 
         # Espera 2s para o menu de contexto abrir totalmente
         time.sleep(2)
@@ -810,12 +824,12 @@ def baixar_somente(ano=None, uf="SC"):
             if contexto_ainda_visivel:
                 print("⚠ Menu de contexto AINDA visível após o clique. Salvando snapshot de debug...")
                 salvar_snapshot("03_debug_menu_ainda_visivel")
-                return False
+                return None
             print("✓ Menu de contexto sumiu (clique confirmado)")
         except Exception as e:
             print(f"✗ Falha ao clicar em 'Exportar dados': {e}")
             salvar_snapshot("03_erro_exportar_dados")
-            return False
+            return None
 
         # Espera 2s para o diálogo de exportação abrir
         time.sleep(2)
@@ -844,12 +858,12 @@ def baixar_somente(ano=None, uf="SC"):
             if dialogo_ainda_visivel:
                 print("⚠ Botão 'Exportar' AINDA visível após o clique. Salvando snapshot de debug...")
                 salvar_snapshot("04_debug_botao_ainda_visivel")
-                return False
+                return None
             print("✓ Diálogo fechou (clique confirmado)")
         except Exception as e:
             print(f"✗ 'Exportar' (botão final) não encontrado: {e}")
             salvar_snapshot("04_erro_exportar")
-            return False
+            return None
 
         # Espera 2s antes de procurar o link de download
         time.sleep(2)
@@ -857,13 +871,13 @@ def baixar_somente(ano=None, uf="SC"):
         # Aguardar link de download aparecer
         print("\n[5] Aguardando link de download...")
         if not aguardar_botao_export_url(intervalo=5, timeout_max=180):
-            return False
-        
+            return None
+
         # Aguardar download terminar
         print("\nAguardando finalizacao do download...")
         if not aguardar_download_terminar(timeout_max=600):
             print("\n✗ Download nao completou")
-            return False
+            return None
         
         arquivos = [f for f in os.listdir(download_folder) if f.endswith('.xlsx') and not f.endswith('.crdownload')]
         if arquivos:
@@ -871,19 +885,21 @@ def baixar_somente(ano=None, uf="SC"):
             arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
             arquivo_baixado = os.path.join(download_folder, arquivos[0])
             print(f"\n✓ Download concluido: {arquivo_baixado}")
-            return True
+            return arquivo_baixado
         else:
             print("\n✗ Nenhum arquivo baixado encontrado")
-            return False
-            
+            return None
+
     except Exception as e:
         print(f"\n✗ Erro: {e}")
         salvar_snapshot("99_erro_geral")
-        return False
+        return None
     finally:
         if driver:
-            time.sleep(2)
-            driver.quit()
+            try:
+                driver.quit()
+            except Exception:
+                pass
             print("✓ Navegador fechado")
 
 
@@ -1015,188 +1031,153 @@ def arquivo_eh_vazio(caminho_arquivo, max_bytes=50000):
     return False
 
 
-def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
-                    intervalo_minutos=0, limite_lotes=None):
-    """Baixa todos os anos disponíveis de SC, em lotes de 4, até o arquivo vir vazio.
+def producao_completa_brasil(ano_inicio=None, ano_fim=None,
+                              intervalo_minutos=0, limite_meses=None,
+                              mes_inicio=None, mes_fim=None):
+    """Producao completa do Brasil inteiro, 1 mes e 1 ano por vez.
 
-    A cada lote bem-sucedido, importa o Excel para o banco SQLite.
+    Para cada combinacao (ano, mes), do mais recente para o mais antigo:
+        1. Baixa o Excel do SERPRO (Brasil inteiro, filtro Ano+Mes)
+        2. Detecta se veio vazio (fim do historico)
+        3. Importa com INSERT OR IGNORE (acumula, nao duplica)
+        4. Apaga o .xlsx
+
+    O ano/mes atual pode mudar (dados em crescimento); INSERT OR IGNORE
+    + UNIQUE constraint de 13 campos garante que:
+        - Se o registro ja existe, eh pulado (duplicata)
+        - Se mudou (ex: quantidade atualizada), o registro antigo permanece
+          (a UNIQUE nao atualiza, apenas rejeita o novo)
 
     Args:
-        ano_inicio: ano mais antigo a tentar (default: 5 anos atrás do atual)
-        ano_fim:    ano mais recente a tentar (default: ano atual)
-        tamanho_lote: anos por requisição (default 4, máximo aceito pelo SERPRO)
-        intervalo_minutos: espera entre lotes (default 0)
-        limite_lotes: para após N lotes (None = sem limite; só para quando vier vazio)
+        ano_inicio: ano mais antigo (default 2010 - SERPRO tem desde ~2005)
+        ano_fim: ano mais recente (default ano atual)
+        intervalo_minutos: espera entre cada download (default 0)
+        limite_meses: para apos N meses processados (None = sem limite)
+        mes_inicio: mes de inicio 1-12 (default 12 = mais recente primeiro)
+        mes_fim: mes final 1-12 (default 1 = janeiro)
     """
     from datetime import datetime
     agora = datetime.now()
     if ano_fim is None:
         ano_fim = agora.year
     if ano_inicio is None:
-        ano_inicio = max(ano_fim - 30, 2000)  # SERPRO tem dados desde ~2000
+        ano_inicio = 2010
+    if mes_inicio is None:
+        mes_inicio = 12  # começa em dezembro
+    if mes_fim is None:
+        mes_fim = 1
 
     print("\n" + "="*70)
-    print("BAIXAR TODOS SC - MODO PRODUCAO")
-    print(f"  UF: SC | Range: {ano_inicio}..{ano_fim} | Lote: {tamanho_lote} anos")
-    print(f"  Intervalo entre lotes: {intervalo_minutos} min | Limite: {limite_lotes or 'infinito'}")
+    print("PRODUCAO COMPLETA BRASIL - 1 MES POR VEZ")
+    print(f"  Range: {ano_inicio}..{ano_fim} | Meses: {mes_inicio}..{mes_fim}")
+    print(f"  Intervalo: {intervalo_minutos} min | Limite: {limite_meses or 'infinito'} meses")
+    print(f"  Brasil inteiro (sem filtro de UF)")
     print("="*70)
 
-    # Gera lista de anos em ordem DECRESCENTE (do mais recente pro mais antigo)
-    # É mais comum o SERPRO ter dados nos anos recentes; paramos quando vier vazio.
-    todos_anos = list(range(ano_fim, ano_inicio - 1, -1))
-
-    # O ano atual (hoje) eh o unico que precisa ser reimportado: dados de
-    # anos passados nao mudam. Entao quando o lote contiver o ano atual,
-    # pedimos para apagar SOMENTE esse(s) ano(s) antes de reinserir.
-    ano_atual = agora.year
-    print(f"  Ano atual (reimportado a cada run): {ano_atual}")
-    print(f"  Anos passados: preservados (INSERT OR IGNORE)")
+    # Gera lista de (ano, mes) em ordem DECRESCENTE
+    # Comeca do mais recente (ano_fim, mes_inicio) e vai ate (ano_inicio, mes_fim)
+    combinacoes = []
+    for ano in range(ano_fim, ano_inicio - 1, -1):
+        if ano == ano_fim:
+            meses_ano = range(mes_inicio, 0, -1)
+        elif ano == ano_inicio:
+            meses_ano = range(mes_fim, 0, -1) if mes_fim <= 12 else range(1, 13)
+        else:
+            meses_ano = range(12, 0, -1)
+        for mes in meses_ano:
+            combinacoes.append((ano, mes))
 
     total_baixados = 0
     total_importados = 0
     total_vazios = 0
-    lote_num = 0
+    total_registros = 0
+    mes_num = 0
+    inicio = time.time()
 
-    # Itera em lotes
-    for i in range(0, len(todos_anos), tamanho_lote):
-        lote = todos_anos[i:i + tamanho_lote]
-        lote_num += 1
+    for ano, mes in combinacoes:
+        mes_num += 1
 
-        if limite_lotes and lote_num > limite_lotes:
-            print(f"\n✓ Limite de {limite_lotes} lotes atingido. Encerrando.")
+        if limite_meses and mes_num > limite_meses:
+            print(f"\n✓ Limite de {limite_meses} meses atingido. Encerrando.")
             break
 
-        print(f"\n>>> LOTE {lote_num}: anos {lote} ({', '.join(str(a) for a in lote)})")
+        elapsed = time.time() - inicio
+        print(f"\n>>> [{mes_num}/{len(combinacoes)}] {MESES_PT[mes-1]}/{ano} (decorrido: {elapsed/60:.1f} min)")
         print("-" * 70)
 
         # 1) Baixar
-        sucesso = baixar_somente(ano=lote, uf="SC")
-        if not sucesso:
-            print(f"  ✗ Falha no download do lote {lote_num}. Continuando...")
+        caminho = baixar_somente(ano=ano, mes=mes)
+        if not caminho:
+            print(f"  ✗ Falha no download de {MESES_PT[mes-1]}/{ano}. Continuando...")
             continue
 
-        # 2) Encontrar o .xlsx recém-baixado (o mais recente, ordenado por mtime)
-        arquivos = [f for f in os.listdir(download_folder)
-                    if f.endswith('.xlsx') and not f.endswith('.crdownload')]
-        if not arquivos:
-            print(f"  ✗ Nenhum .xlsx encontrado após download do lote {lote_num}")
-            continue
-        # Pega o MAIS RECENTE por mtime (evita pegar Excel antigo de runs anteriores)
-        arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)), reverse=True)
-        caminho = os.path.join(download_folder, arquivos[0])
-        tamanho = os.path.getsize(caminho)
-        print(f"  Arquivo: {arquivos[0]} ({tamanho/1024/1024:.2f} MB)")
-
-        # 3) Verificar se veio vazio (fim do histórico)
+        # 2) Verificar se veio vazio (fim do historico)
         if arquivo_eh_vazio(caminho):
-            print(f"  ⏭ Arquivo VAZIO detectado (sem dados para {lote}). Fim do histórico.")
+            print(f"  ⏭ Arquivo VAZIO (sem dados para {MESES_PT[mes-1]}/{ano}).")
             total_vazios += 1
-            # Remove o arquivo vazio para não poluir
             try:
                 os.remove(caminho)
-                print(f"  🗑 Removido: {arquivos[0]}")
+                print(f"  🗑 Removido: {os.path.basename(caminho)}")
             except Exception:
                 pass
-            # 2 vazios consecutivos = fim definitivo
-            if total_vazios >= 2:
-                print("\n✓ Dois lotes vazios consecutivos. Histórico encerrado.")
+            # 3 vazios consecutivos = fim definitivo
+            if total_vazios >= 3:
+                print("\n✓ Tres meses vazios consecutivos. Historico encerrado.")
                 break
             continue
 
-        # 4) Resetar contador de vazios e importar
+        # 3) Resetar contador de vazios e importar
         total_vazios = 0
         total_baixados += 1
-        print(f"  Importando para o banco SQLite...")
 
-        # Detecta se o lote contem o ano atual (so esse deve ser reimportado)
-        anos_para_reimportar = [a for a in lote if a == ano_atual]
-
-        if importar_excel_para_sqlite(caminho, anos_para_reimportar=anos_para_reimportar or None):
+        # Importar com INSERT OR IGNORE (nao precisa de limpar)
+        # Passamos o caminho do arquivo especifico, e o importador le e faz o trabalho
+        if importar_excel_para_sqlite(caminho, limpar_antes=False, anos_para_reimportar=None):
             total_importados += 1
-            print(f"  ✓ Lote {lote_num} OK ({total_importados} importados no total)")
-            # Importado OK: apaga o xlsx para nao acumular/repetir
+            print(f"  ✓ {MESES_PT[mes-1]}/{ano} OK")
+            # Apaga o xlsx para nao acumular
             try:
                 os.remove(caminho)
-                print(f"  🗑 Arquivo removido: {arquivos[0]}")
+                print(f"  🗑 Arquivo removido: {os.path.basename(caminho)}")
             except Exception as e:
-                print(f"  ⚠ Nao foi possivel remover {arquivos[0]}: {e}")
+                print(f"  ⚠ Nao foi possivel remover: {e}")
         else:
-            print(f"  ✗ Falha na importação do lote {lote_num} (xlsx MANTIDO para inspecao)")
+            print(f"  ✗ Falha na importacao de {MESES_PT[mes-1]}/{ano} (xlsx MANTIDO)")
 
-        # 5) Intervalo entre lotes (se houver mais)
-        if intervalo_minutos > 0 and (i + tamanho_lote) < len(todos_anos):
-            if limite_lotes is None or lote_num < limite_lotes:
-                print(f"\n⏳ Aguardando {intervalo_minutos} min antes do proximo lote...")
+        # 4) Intervalo entre downloads (se houver mais)
+        if intervalo_minutos > 0 and mes_num < len(combinacoes):
+            if limite_meses is None or mes_num < limite_meses:
+                print(f"\n⏳ Aguardando {intervalo_minutos} min antes do proximo mes...")
                 time.sleep(intervalo_minutos * 60)
 
+    # Relatorio final
+    elapsed = time.time() - inicio
     print("\n" + "="*70)
     print("RESUMO DA PRODUCAO")
     print("="*70)
-    print(f"  Lotes processados: {lote_num}")
-    print(f"  Downloads OK:      {total_baixados}")
-    print(f"  Importacoes OK:    {total_importados}")
-    print(f"  Lotes vazios:      {total_vazios}")
+    print(f"  Meses processados:   {mes_num}")
+    print(f"  Downloads OK:        {total_baixados}")
+    print(f"  Importacoes OK:      {total_importados}")
+    print(f"  Meses vazios:        {total_vazios}")
+    print(f"  Tempo total:         {elapsed/60:.1f} min")
+    # Tamanho do banco final
+    try:
+        cnxn = sqlite3.connect('base_dados.db')
+        cur = cnxn.cursor()
+        cur.execute("SELECT COUNT(*) FROM dados_serpro")
+        total_banco = cur.fetchone()[0]
+        cur.execute("SELECT MIN(ano_abertura), MAX(ano_abertura) FROM dados_serpro")
+        anos_banco = cur.fetchone()
+        cnxn.close()
+        print(f"  Banco: {total_banco:,} registros | Anos: {anos_banco[0]}..{anos_banco[1]}".replace(',', '.'))
+    except Exception as e:
+        print(f"  (erro ao consultar banco: {e})")
     print("="*70)
     return total_importados > 0
 
 
-# Alias semantico: o usuario pediu "importar toda sc completo, todos os anos de 4 em 4"
-importar_completo_sc = baixar_todos_sc
-
-
-def importar_todos_sc_local():
-    """Importa TODOS os .xlsx ja baixados em downloads_serpro/ para o banco SQLite.
-
-    Util quando os xlsx ja foram baixados em runs anteriores e voce quer
-    apenas consolidar tudo no banco (e apagar os xlsx apos importar).
-
-    Processa do MAIS ANTIGO para o MAIS RECENTE (mtime asc) para preservar ordem.
-    """
-    arquivos = [f for f in os.listdir(download_folder)
-                if f.endswith('.xlsx') and not f.endswith('.crdownload')]
-    if not arquivos:
-        print("✗ Nenhum .xlsx encontrado em downloads_serpro/")
-        return False
-
-    # Ordena do mais antigo pro mais recente
-    arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)))
-
-    print("\n" + "="*70)
-    print("IMPORTAR TODOS SC LOCAL (sem novo download)")
-    print(f"  Pasta: {download_folder}")
-    print(f"  Arquivos encontrados: {len(arquivos)}")
-    print("="*70)
-
-    total_ok = 0
-    total_falha = 0
-    for i, nome in enumerate(arquivos, 1):
-        caminho = os.path.join(download_folder, nome)
-        tamanho = os.path.getsize(caminho) / 1024 / 1024
-        print(f"\n[{i}/{len(arquivos)}] {nome} ({tamanho:.2f} MB)")
-        if arquivo_eh_vazio(caminho):
-            print(f"  ⏭ Arquivo vazio, pulando.")
-            try:
-                os.remove(caminho)
-            except Exception:
-                pass
-            continue
-        if importar_excel_para_sqlite(caminho):
-            total_ok += 1
-            try:
-                os.remove(caminho)
-                print(f"  🗑 Removido: {nome}")
-            except Exception as e:
-                print(f"  ⚠ Nao foi possivel remover: {e}")
-        else:
-            total_falha += 1
-            print(f"  ⚠ xlsx MANTIDO (importacao falhou)")
-
-    print("\n" + "="*70)
-    print("RESUMO IMPORTACAO LOCAL")
-    print(f"  Importados OK: {total_ok}")
-    print(f"  Falhas:        {total_falha}")
-    print("="*70)
-    return total_ok > 0
+# Aliases para compatibilidade
+importar_completo_brasil = producao_completa_brasil
 
 
 if __name__ == "__main__":
@@ -1205,32 +1186,33 @@ if __name__ == "__main__":
     print("EXPORTADOR DE DADOS SERPRO COM SNAPSHOTS")
     print("========================================\n")
     
-    parser = argparse.ArgumentParser(description="Exportador SERPRO")
-    parser.add_argument("acao", nargs="?", default="completo",
-                        choices=["completo", "baixar", "importar", "info",
-                                 "todos-sc", "importar-completo-sc", "importar-todos-sc-local"],
+    parser = argparse.ArgumentParser(description="Exportador SERPRO - Mapa de Empresas")
+    parser.add_argument("acao", nargs="?", default="producao-completa",
+                        choices=["producao-completa", "producao-completa-brasil",
+                                 "importar-completo-brasil", "baixar-mes", "importar", "info"],
                         help=("Acoes disponiveis: "
-                              "completo (padrao), baixar, importar, info, "
-                              "todos-sc (alias), "
-                              "importar-completo-sc (baixa+importa+apaga em lotes de 4), "
-                              "importar-todos-sc-local (apenas importa xlsx ja baixados)"))
-    parser.add_argument("--ano-inicio", type=int, default=None,
-                        help="(todos-sc) Ano inicial do range (default: 5 anos atras)")
-    parser.add_argument("--ano-fim", type=int, default=None,
-                        help="(todos-sc) Ano final do range (default: ano atual)")
-    parser.add_argument("--lote", type=int, default=4,
-                        help="(todos-sc) Tamanho do lote de anos (max 4, default 4)")
-    parser.add_argument("--intervalo", type=int, default=0,
-                        help="(todos-sc) Minutos de espera entre lotes (default 0)")
-    parser.add_argument("--limite-lotes", type=int, default=None,
-                        help="(todos-sc) Para apos N lotes (default: ate arquivo vazio)")
+                              "producao-completa (padrao, baixa+importa BRASIL mes a mes), "
+                              "baixar-mes (baixa 1 mes especifico), "
+                              "importar (importa o xlsx mais recente), "
+                              "info (status do banco)"))
+    parser.add_argument("--ano", "-y", type=int, default=None,
+                        help="(baixar-mes) Ano (ex: 2026). Default: ano atual")
+    parser.add_argument("--mes", "-m", default=None,
+                        help="(baixar-mes) Mes: 1-12 ou nome PT (Janeiro, Fevereiro, ...). Default: mes atual")
     parser.add_argument("--arquivo", "-f", type=str, default=None,
-                        help="Caminho do arquivo para importar (usado com acao=importar)")
-    parser.add_argument("--ano", "-y", type=str, default=None,
-                        help="Anos para filtrar no download. Use virgulas ou espacos para multiplos "
-                             "anos (max 4). Ex: --ano 2026 | --ano 2023,2024,2025,2026")
-    parser.add_argument("--uf", "-u", type=str, default="SC",
-                        help="Sigla da UF para filtrar (padrao: SC). Ex: --uf SC, --uf SP, --uf RJ")
+                        help="(importar) Caminho do arquivo .xlsx")
+    parser.add_argument("--ano-inicio", type=int, default=None,
+                        help="(producao-completa) Ano inicial (default: 2010)")
+    parser.add_argument("--ano-fim", type=int, default=None,
+                        help="(producao-completa) Ano final (default: ano atual)")
+    parser.add_argument("--mes-inicio", type=int, default=12,
+                        help="(producao-completa) Mes inicial - ordem decrescente (default: 12)")
+    parser.add_argument("--mes-fim", type=int, default=1,
+                        help="(producao-completa) Mes final - ordem decrescente (default: 1)")
+    parser.add_argument("--intervalo", type=int, default=0,
+                        help="(producao-completa) Minutos de espera entre meses (default 0)")
+    parser.add_argument("--limite-meses", type=int, default=None,
+                        help="(producao-completa) Para apos N meses (default: ate 3 vazios consecutivos)")
     parser.add_argument("--exemplos", action="store_true",
                         help="Mostra exemplos de uso e sai")
 
@@ -1242,50 +1224,34 @@ if __name__ == "__main__":
 EXEMPLOS DE USO - Exportador SERPRO (Mapa de Empresas)
 ============================================================
 
-URL base montada:
+URL base montada (Brasil inteiro, 1 mes especifico):
   https://dd.serpro.gov.br/publico/single/?appid=...&obj=vVDJ
   &opt=ctxmenu,currsel
-  &select=$::UF,SC
-  &select=$::Ano%20de%20Abertura,2023,2024,2025,2026
+  &select=$::Ano%20de%20Abertura,2026
+  &select=$::M%C3%AAs%20de%20Abertura,Janeiro
 
-1) Baixar todos os anos, UF=SC (padrao):
-   python exportador_dados_serpro.py baixar
+1) PRODUCAO COMPLETA BRASIL: baixa+importa+apaga 1 mes por vez, do mais recente:
+   python exportador_dados_serpro.py
+   (mesmo que: python exportador_dados_serpro.py producao-completa)
 
-2) Baixar apenas 2026 (SC):
-   python exportador_dados_serpro.py baixar --ano 2026
-   python exportador_dados_serpro.py baixar -y 2026
+2) Producao completa com range customizado (ex: 2015 a 2026):
+   python exportador_dados_serpro.py --ano-inicio 2015 --ano-fim 2026
 
-3) Baixar varios anos (ate 4) - SC:
-   python exportador_dados_serpro.py baixar --ano 2023,2024,2025,2026
-   python exportador_dados_serpro.py baixar -y "2023 2024 2025 2026"
+3) Producao completa com 2 min entre cada mes (sem sobrecarregar):
+   python exportador_dados_serpro.py --intervalo 2
 
-4) Trocar a UF (ex: Sao Paulo):
-   python exportador_dados_serpro.py baixar --uf SP --ano 2024,2025
+4) Testar com apenas 2 meses (rapido):
+   python exportador_dados_serpro.py --limite-meses 2
 
-5) Ciclo completo (baixar + importar) com varios anos:
-   python exportador_dados_serpro.py completo -y 2023,2024,2025,2026
+5) Baixar apenas 1 mes especifico (teste):
+   python exportador_dados_serpro.py baixar-mes --ano 2026 --mes 1
+   python exportador_dados_serpro.py baixar-mes -y 2025 -m Marco
 
-6) Apenas importar o ultimo download:
-   python exportador_dados_serpro.py importar
+6) Importar um .xlsx especifico:
+   python exportador_dados_serpro.py importar -f "downloads_serpro/foo.xlsx"
 
-7) Status do sistema (banco + downloads):
+7) Status do banco e downloads:
    python exportador_dados_serpro.py info
-
-8) PRODUCAO COMPLETA: baixa+importa+apaga TODOS os anos de SC, em lotes de 4:
-   python exportador_dados_serpro.py importar-completo-sc
-   (mesmo que: python exportador_dados_serpro.py todos-sc)
-
-9) Producao completa com range customizado (ex: 2010 a 2026):
-   python exportador_dados_serpro.py importar-completo-sc --ano-inicio 2010 --ano-fim 2026
-
-10) Producao completa com 5 min entre lotes (sem sobrecarregar o SERPRO):
-    python exportador_dados_serpro.py importar-completo-sc --intervalo 5
-
-11) Producao completa limitada a 2 lotes (teste):
-    python exportador_dados_serpro.py importar-completo-sc --limite-lotes 2
-
-12) Importar xlsx ja baixados (sem novo download) + apagar:
-    python exportador_dados_serpro.py importar-todos-sc-local
 ============================================================
 """)
         sys.exit(0)
@@ -1319,8 +1285,39 @@ URL base montada:
         except Exception as e:
             print(f"  Erro ao verificar banco: {e}")
     
-    elif args.acao == "baixar":
-        baixar_somente(ano=args.ano, uf=args.uf)
+    elif args.acao in ("producao-completa", "producao-completa-brasil", "importar-completo-brasil"):
+        # Producao: BRASIL inteiro, 1 mes por vez, do mais recente para o mais antigo
+        producao_completa_brasil(
+            ano_inicio=args.ano_inicio,
+            ano_fim=args.ano_fim,
+            intervalo_minutos=args.intervalo,
+            limite_meses=args.limite_meses,
+            mes_inicio=args.mes_inicio,
+            mes_fim=args.mes_fim,
+        )
+
+    elif args.acao == "baixar-mes":
+        # Baixa 1 mes especifico
+        from datetime import datetime as _dt
+        agora = _dt.now()
+        ano = args.ano if args.ano is not None else agora.year
+        if args.mes is not None:
+            try:
+                mes = int(args.mes)
+            except ValueError:
+                mes = args.mes  # nome do mes
+        else:
+            mes = agora.month
+        caminho = baixar_somente(ano=ano, mes=mes)
+        if caminho:
+            print(f"\nArquivo baixado: {caminho}")
+            # Importa direto
+            importar_excel_para_sqlite(caminho, limpar_antes=False)
+            try:
+                os.remove(caminho)
+                print(f"  🗑 Arquivo removido: {os.path.basename(caminho)}")
+            except Exception as e:
+                print(f"  ⚠ Nao foi possivel remover: {e}")
 
     elif args.acao == "importar":
         if args.arquivo:
@@ -1328,44 +1325,5 @@ URL base montada:
         else:
             importar_ultimo_download()
 
-    elif args.acao == "completo":
-        # Para ciclo completo, usa ano se especificado
-        if args.ano:
-            # Baixar com ano + importar
-            if not baixar_somente(ano=args.ano, uf=args.uf):
-                print("\n✗ Falha no download")
-            else:
-                importar_ultimo_download()
-        else:
-            # Sem filtro de ano, mas com UF
-            if not baixar_somente(uf=args.uf):
-                print("\n✗ Falha no download")
-            else:
-                importar_ultimo_download()
-
-    elif args.acao == "todos-sc":
-        # Alias: roda a funcao baixar_todos_sc
-        baixar_todos_sc(
-            ano_inicio=args.ano_inicio,
-            ano_fim=args.ano_fim,
-            tamanho_lote=args.lote,
-            intervalo_minutos=args.intervalo,
-            limite_lotes=args.limite_lotes,
-        )
-
-    elif args.acao == "importar-completo-sc":
-        # Producao: baixa + importa + apaga em lotes de 4 anos
-        importar_completo_sc(
-            ano_inicio=args.ano_inicio,
-            ano_fim=args.ano_fim,
-            tamanho_lote=args.lote,
-            intervalo_minutos=args.intervalo,
-            limite_lotes=args.limite_lotes,
-        )
-
-    elif args.acao == "importar-todos-sc-local":
-        # Apenas importa os xlsx ja presentes em downloads_serpro/
-        importar_todos_sc_local()
-    
     else:
         parser.print_help()
