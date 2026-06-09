@@ -817,8 +817,12 @@ def aguardar_download_terminar(intervalo=5, timeout_max=600):
     return False
 
 
-def importar_ultimo_download():
-    """Importa o último arquivo baixado para o banco SQLite (o mais recente por mtime)."""
+def importar_ultimo_download(apagar_apos=True):
+    """Importa o último arquivo baixado para o banco SQLite (o mais recente por mtime).
+
+    Args:
+        apagar_apos: se True (default), apaga o xlsx apos importar com sucesso
+    """
     arquivos = [f for f in os.listdir(download_folder)
                 if f.endswith('.xlsx') and not f.endswith('.crdownload')]
 
@@ -831,7 +835,18 @@ def importar_ultimo_download():
     arquivo_baixado = os.path.join(download_folder, arquivos[0])
     print(f"\nArquivo encontrado: {arquivo_baixado}")
 
-    return importar_excel_para_sqlite(arquivo_baixado)
+    ok = importar_excel_para_sqlite(arquivo_baixado)
+
+    if ok and apagar_apos:
+        try:
+            os.remove(arquivo_baixado)
+            print(f"  🗑 Arquivo removido: {os.path.basename(arquivo_baixado)}")
+        except Exception as e:
+            print(f"  ⚠ Nao foi possivel remover: {e}")
+    elif not ok:
+        print(f"  ⚠ xlsx MANTIDO para inspecao (importacao falhou)")
+
+    return ok
 
 
 def executar_ciclo_completo():
@@ -971,8 +986,14 @@ def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
         if importar_excel_para_sqlite(caminho):
             total_importados += 1
             print(f"  ✓ Lote {lote_num} OK ({total_importados} importados no total)")
+            # Importado OK: apaga o xlsx para nao acumular/repetir
+            try:
+                os.remove(caminho)
+                print(f"  🗑 Arquivo removido: {arquivos[0]}")
+            except Exception as e:
+                print(f"  ⚠ Nao foi possivel remover {arquivos[0]}: {e}")
         else:
-            print(f"  ✗ Falha na importação do lote {lote_num}")
+            print(f"  ✗ Falha na importação do lote {lote_num} (xlsx MANTIDO para inspecao)")
 
         # 5) Intervalo entre lotes (se houver mais)
         if intervalo_minutos > 0 and (i + tamanho_lote) < len(todos_anos):
