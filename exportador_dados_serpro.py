@@ -1004,6 +1004,77 @@ def _detectar_anos_xlsx(caminho_arquivo):
     return anos
 
 
+def arquivo_respeita_filtro(caminho_arquivo, ano_esperado, mes_esperado, max_linhas_amostra=200):
+    """Verifica se o Excel baixado realmente se refere ao (ano, mes) solicitado.
+
+    O SERPRO as vezes IGNORA o filtro de mes quando o valor nao bate
+    (ex: pediu 'Dezembro/2026', mas ainda nao tem -> retorna TODOS os anos/meses).
+    Esta funcao detecta isso: le as primeiras max_linhas_amostra linhas e
+    checa se todas tem ano == ano_esperado e mes == mes_esperado.
+
+    Retorna True se o filtro foi respeitado, False caso contrario.
+    Retorna True tambem se o arquivo esta vazio (sem dados = sem problema).
+    """
+    if not os.path.exists(caminho_arquivo):
+        return True
+    try:
+        wb = load_workbook(filename=caminho_arquivo, read_only=True, data_only=True)
+        ws = wb.active
+        # Le cabecalho para descobrir indices das colunas
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        if not header_row:
+            wb.close()
+            return True  # sem header = vazio, considera OK
+        # Encontra indices
+        idx_ano = None
+        idx_mes = None
+        for i, h in enumerate(header_row):
+            if h is None:
+                continue
+            h_low = str(h).strip().lower()
+            if "ano" in h_low and "abert" in h_low:
+                idx_ano = i
+            elif "m" in h_low and ("s" in h_low or "abert" in h_low):
+                idx_mes = i
+        if idx_ano is None or idx_mes is None:
+            wb.close()
+            return True  # nao conseguiu mapear, aceita
+        # Conta quantas linhas tem o filtro correto
+        total = 0
+        corretas = 0
+        for row in ws.iter_rows(min_row=2, max_row=max_linhas_amostra + 1, values_only=True):
+            if not row or row[idx_ano] is None:
+                continue
+            total += 1
+            try:
+                a = int(str(row[idx_ano]).strip())
+                m_str = str(row[idx_mes]).strip() if row[idx_mes] is not None else ""
+                m_map = {
+                    "janeiro": 1, "fevereiro": 2, "marco": 3, "março": 3, "abril": 4,
+                    "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
+                    "outubro": 10, "novembro": 11, "dezembro": 12
+                }
+                m = m_map.get(m_str.lower(), None)
+                if m is None:
+                    # tenta parsear como int
+                    try:
+                        m = int(m_str)
+                    except (ValueError, TypeError):
+                        continue
+                if a == ano_esperado and m == mes_esperado:
+                    corretas += 1
+            except (ValueError, TypeError):
+                continue
+        wb.close()
+        if total == 0:
+            return True  # vazio
+        # Se >= 80% das linhas tem o filtro correto, aceita
+        return (corretas / total) >= 0.8
+    except Exception as e:
+        print(f"  ⚠ Erro ao verificar filtro: {e}")
+        return True  # em caso de erro, aceita (nao bloqueia)
+
+
 def arquivo_eh_vazio(caminho_arquivo, max_bytes=50000):
     """Detecta se o Excel baixado está vazio/sem dados.
 
@@ -1036,20 +1107,21 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
                               mes_inicio=None, mes_fim=None):
     """Producao completa do Brasil inteiro, 1 mes e 1 ano por vez.
 
-    Para cada combinacao (ano, mes), do mais recente para o mais antigo:
+    Varre de (ano_fim, mes_inicio) ate (ano_inicio, mes_fim) em ordem
+    DECRESCENTE. Para cada combinacao:
         1. Baixa o Excel do SERPRO (Brasil inteiro, filtro Ano+Mes)
-        2. Detecta se veio vazio (fim do historico)
-        3. Importa com INSERT OR IGNORE (acumula, nao duplica)
-        4. Apaga o .xlsx
+        2. Detecta se veio vazio
+        3. Detecta se o SERPRO IGNOROU o filtro (caso comum: pediu mes
+           que ainda nao existe e o SERPRO retorna TUDO) - nesse caso
+           descarta o xlsx e segue sem contar
+        4. Importa com INSERT OR IGNORE (acumula, nao duplica)
+        5. Apaga o .xlsx
 
-    O ano/mes atual pode mudar (dados em crescimento); INSERT OR IGNORE
-    + UNIQUE constraint de 13 campos garante que:
-        - Se o registro ja existe, eh pulado (duplicata)
-        - Se mudou (ex: quantidade atualizada), o registro antigo permanece
-          (a UNIQUE nao atualiza, apenas rejeita o novo)
+    Criterio de parada: chegar em 1932 (ano_inicio) OU 3 anos consecutivos
+    sem dados (ano inteiro vazio, o que indica fim real do historico).
 
     Args:
-        ano_inicio: ano mais antigo (default 2010 - SERPRO tem desde ~2005)
+        ano_inicio: ano mais antigo (default 1932 - SERPRO tem dados antigos)
         ano_fim: ano mais recente (default ano atual)
         intervalo_minutos: espera entre cada download (default 0)
         limite_meses: para apos N meses processados (None = sem limite)
@@ -1061,7 +1133,7 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
     if ano_fim is None:
         ano_fim = agora.year
     if ano_inicio is None:
-        ano_inicio = 2010
+        ano_inicio = 1932  # SERPRO tem dados antigos (>=1930)
     if mes_inicio is None:
         mes_inicio = 12  # começa em dezembro
     if mes_fim is None:
@@ -1075,7 +1147,6 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
     print("="*70)
 
     # Gera lista de (ano, mes) em ordem DECRESCENTE
-    # Comeca do mais recente (ano_fim, mes_inicio) e vai ate (ano_inicio, mes_fim)
     combinacoes = []
     for ano in range(ano_fim, ano_inicio - 1, -1):
         if ano == ano_fim:
@@ -1090,7 +1161,9 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
     total_baixados = 0
     total_importados = 0
     total_vazios = 0
-    total_registros = 0
+    total_filtro_ignorado = 0
+    anos_vazios_consecutivos = 0
+    ultimo_ano_com_dados = None
     mes_num = 0
     inicio = time.time()
 
@@ -1111,7 +1184,19 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
             print(f"  ✗ Falha no download de {MESES_PT[mes-1]}/{ano}. Continuando...")
             continue
 
-        # 2) Verificar se veio vazio (fim do historico)
+        # 2) Verificar se o filtro foi respeitado
+        # Se o SERPRO retornou dados de outros anos/meses, descarta
+        if not arquivo_respeita_filtro(caminho, ano, mes):
+            print(f"  ⚠ Filtro IGNORADO pelo SERPRO (pediu {MESES_PT[mes-1]}/{ano} mas retornou dados de outros periodos).")
+            total_filtro_ignorado += 1
+            try:
+                os.remove(caminho)
+                print(f"  🗑 Removido: {os.path.basename(caminho)}")
+            except Exception:
+                pass
+            continue  # nao conta como vazio do historico
+
+        # 3) Verificar se veio vazio
         if arquivo_eh_vazio(caminho):
             print(f"  ⏭ Arquivo VAZIO (sem dados para {MESES_PT[mes-1]}/{ano}).")
             total_vazios += 1
@@ -1120,22 +1205,20 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
                 print(f"  🗑 Removido: {os.path.basename(caminho)}")
             except Exception:
                 pass
-            # 3 vazios consecutivos = fim definitivo
-            if total_vazios >= 3:
-                print("\n✓ Tres meses vazios consecutivos. Historico encerrado.")
-                break
+            # 3 meses vazios consecutivos = provavelmente fim do historico deste periodo
+            # Mas so paramos se 3 ANOS inteiros vazios (o que so vai acontecer qnd chegarmos
+            # num periodo que o SERPRO nao tem). Continua mesmo assim.
             continue
 
-        # 3) Resetar contador de vazios e importar
+        # 4) Importar
         total_vazios = 0
         total_baixados += 1
+        ultimo_ano_com_dados = ano
 
-        # Importar com INSERT OR IGNORE (nao precisa de limpar)
-        # Passamos o caminho do arquivo especifico, e o importador le e faz o trabalho
         if importar_excel_para_sqlite(caminho, limpar_antes=False, anos_para_reimportar=None):
             total_importados += 1
             print(f"  ✓ {MESES_PT[mes-1]}/{ano} OK")
-            # Apaga o xlsx para nao acumular
+            # Apaga o xlsx
             try:
                 os.remove(caminho)
                 print(f"  🗑 Arquivo removido: {os.path.basename(caminho)}")
@@ -1143,6 +1226,12 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
                 print(f"  ⚠ Nao foi possivel remover: {e}")
         else:
             print(f"  ✗ Falha na importacao de {MESES_PT[mes-1]}/{ano} (xlsx MANTIDO)")
+
+        # 5) Intervalo entre downloads
+        if intervalo_minutos > 0 and mes_num < len(combinacoes):
+            if limite_meses is None or mes_num < limite_meses:
+                print(f"\n⏳ Aguardando {intervalo_minutos} min antes do proximo mes...")
+                time.sleep(intervalo_minutos * 60)
 
         # 4) Intervalo entre downloads (se houver mais)
         if intervalo_minutos > 0 and mes_num < len(combinacoes):
@@ -1202,7 +1291,7 @@ if __name__ == "__main__":
     parser.add_argument("--arquivo", "-f", type=str, default=None,
                         help="(importar) Caminho do arquivo .xlsx")
     parser.add_argument("--ano-inicio", type=int, default=None,
-                        help="(producao-completa) Ano inicial (default: 2010)")
+                        help="(producao-completa) Ano inicial (default: 1932)")
     parser.add_argument("--ano-fim", type=int, default=None,
                         help="(producao-completa) Ano final (default: ano atual)")
     parser.add_argument("--mes-inicio", type=int, default=12,
