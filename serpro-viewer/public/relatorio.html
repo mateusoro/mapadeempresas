@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório SERPRO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/gridjs@6.2.0/dist/theme/mermaid.min.css" rel="stylesheet">
+<style>
+    :root {
+        /* Design tokens - Light mode (default) */
+        --bg: #fafafa;
+        --bg-elevated: #ffffff;
+        --bg-subtle: #f4f4f5;
+        --bg-hover: #f4f4f5;
+        --bg-active: #e4e4e7;
+        --border: #e4e4e7;
+        --border-strong: #d4d4d8;
+        --text: #18181b;
+        --text-muted: #71717a;
+        --text-faint: #a1a1aa;
+        --accent: #4f46e5;
+        --accent-hover: #4338ca;
+        --accent-soft: #eef2ff;
+        --success: #16a34a;
+        --success-soft: #dcfce7;
+        --danger: #dc2626;
+        --danger-soft: #fee2e2;
+        --warning: #d97706;
+        --warning-soft: #fef3c7;
+        --code-bg: #f4f4f5;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        --radius: 8px;
+        --radius-sm: 6px;
+        --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #09090b;
+            --bg-elevated: #18181b;
+            --bg-subtle: #1f1f23;
+            --bg-hover: #27272a;
+            --bg-active: #3f3f46;
+            --border: #27272a;
+            --border-strong: #3f3f46;
+            --text: #fafafa;
+            --text-muted: #a1a1aa;
+            --text-faint: #71717a;
+            --accent: #818cf8;
+            --accent-hover: #a5b4fc;
+            --accent-soft: #1e1b4b;
+            --success: #4ade80;
+            --success-soft: #052e16;
+            --danger: #f87171;
+            --danger-soft: #450a0a;
+            --warning: #fbbf24;
+            --warning-soft: #451a03;
+            --code-bg: #1f1f23;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+        }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: 'cv11', 'ss01', 'ss03';
+    }
+
+    code, pre, .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace; font-feature-settings: 'zero', 'ss01'; }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* ===== HEADER ===== */
+    .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    .page-title-group { display: flex; flex-direction: column; gap: 4px; }
+    .page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.025em; display: flex; align-items: center; gap: 8px; }
+    .page-title svg { color: var(--accent); }
+    .page-subtitle { font-size: 13px; color: var(--text-muted); }
+    .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+    .breadcrumb a { color: var(--text-muted); text-decoration: none; transition: color var(--transition); }
+    .breadcrumb a:hover { color: var(--accent); }
+    .breadcrumb svg { color: var(--text-faint); }
+
+    /* ===== CARDS / METRICS ===== */
+    .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .metric {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .metric-label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-size: 18px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    .metric-value.success { color: var(--success); }
+    .metric-value.warning { color: var(--warning); }
+
+    /* ===== EDITOR DE QUERY ===== */
+    .editor {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    .editor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--bg-subtle);
+        border-bottom: 1px solid var(--border);
+    }
+    .editor-title { font-size: 12px; font-weight: 500; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .editor-actions { display: flex; gap: 8px; }
+    .editor-body {
+        padding: 0;
+    }
+    .editor textarea {
+        width: 100%;
+        min-height: 60px;
+        max-height: 240px;
+        padding: 12px 16px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        background: var(--code-bg);
+        color: var(--text);
+        border: none;
+        outline: none;
+        resize: vertical;
+        tab-size: 2;
+    }
+    .editor textarea::placeholder { color: var(--text-faint); }
+    .editor-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: var(--bg-subtle);
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-weight: 500;
+        font-family: inherit;
+        border: 1px solid var(--border-strong);
+        background: var(--bg-elevated);
+        color: var(--text);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+        white-space: nowrap;
+    }
+    .btn:hover { background: var(--bg-hover); border-color: var(--text-faint); }
+    .btn:active { background: var(--bg-active); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-ghost { border-color: transparent; background: transparent; }
+    .btn-ghost:hover { background: var(--bg-hover); }
+    .btn-sm { padding: 4px 8px; font-size: 12px; }
+
+    /* ===== TOOLBAR ===== */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-top: none;
+        border-radius: var(--radius) var(--radius) 0 0;
+        flex-wrap: wrap;
+    }
+    .toolbar-search {
+        position: relative;
+        flex: 1;
+        min-width: 200px;
+        max-width: 360px;
+    }
+    .toolbar-search input {
+        width: 100%;
+        padding: 6px 10px 6px 32px;
+        font-size: 13px;
+        font-family: inherit;
+        background: var(--bg-subtle);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        outline: none;
+        transition: all var(--transition);
+    }
+    .toolbar-search input:focus {
+        background: var(--bg-elevated);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .toolbar-search svg {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-faint);
+        pointer-events: none;
+    }
+    .toolbar-spacer { flex: 1; }
+    .toolbar-info { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+    /* ===== TABELA ===== */
+    .table-wrapper {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-top: none;
+        border-radius: 0 0 var(--radius) var(--radius);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    #table { width: 100%; }
+
+    /* Grid.js customizations */
+    .gridjs-wrapper { box-shadow: none !important; border-radius: 0 !important; }
+    .gridjs-table { font-size: 13px !important; font-family: inherit !important; width: 100% !important; }
+    .gridjs-thead { background: var(--bg-subtle) !important; }
+    .gridjs-th {
+        background: var(--bg-subtle) !important;
+        color: var(--text-muted) !important;
+        font-weight: 500 !important;
+        font-size: 11px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.05em !important;
+        padding: 10px 12px !important;
+        border-bottom: 1px solid var(--border) !important;
+        border-color: var(--border) !important;
+        user-select: none !important;
+    }
+    .gridjs-th-content { display: flex !important; align-items: center !important; gap: 4px !important; }
+    .gridjs-th-sort { color: var(--text-faint) !important; opacity: 0.4 !important; transition: opacity var(--transition) !important; }
+    .gridjs-th-sort:hover { opacity: 1 !important; }
+    .gridjs-th.sort .gridjs-th-sort { opacity: 1 !important; color: var(--accent) !important; }
+    .gridjs-td {
+        padding: 10px 12px !important;
+        border-bottom: 1px solid var(--border) !important;
+        border-color: var(--border) !important;
+        color: var(--text) !important;
+        font-variant-numeric: tabular-nums;
+    }
+    .gridjs-tbody tr { transition: background var(--transition); }
+    .gridjs-tbody tr:hover .gridjs-td { background: var(--bg-hover) !important; }
+    .gridjs-tbody tr:last-child .gridjs-td { border-bottom: none !important; }
+    .gridjs-footer {
+        padding: 12px 16px !important;
+        background: var(--bg-elevated) !important;
+        border-top: 1px solid var(--border) !important;
+        color: var(--text-muted) !important;
+        font-size: 12px !important;
+    }
+    .gridjs-pagination {
+        color: var(--text-muted) !important;
+    }
+    .gridjs-pagination .gridjs-pages button {
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        color: var(--text-muted) !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 500 !important;
+        min-width: 28px !important;
+        height: 28px !important;
+        transition: all var(--transition) !important;
+    }
+    .gridjs-pagination .gridjs-pages button:hover {
+        background: var(--bg-hover) !important;
+        color: var(--text) !important;
+    }
+    .gridjs-pagination .gridjs-pages button.gridjs-currentPage {
+        background: var(--accent) !important;
+        color: white !important;
+        border-color: var(--accent) !important;
+    }
+    .gridjs-pagination .gridjs-pages button:disabled {
+        opacity: 0.3 !important;
+    }
+    .gridjs-search {
+        display: none !important; /* usamos o nosso search */
+    }
+
+    /* Empty state */
+    .empty-state, .error-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+        color: var(--text-muted);
+    }
+    .empty-state-icon, .error-state-icon {
+        width: 48px; height: 48px;
+        margin-bottom: 12px;
+        opacity: 0.4;
+    }
+    .empty-state-title, .error-state-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+    .empty-state-text, .error-state-text {
+        font-size: 13px;
+        color: var(--text-muted);
+        max-width: 400px;
+    }
+    .error-state { color: var(--danger); }
+    .error-state-title { color: var(--danger); }
+    .error-state-icon { color: var(--danger); opacity: 0.6; }
+
+    /* Skeleton */
+    .skeleton {
+        background: linear-gradient(90deg, var(--bg-subtle) 0%, var(--bg-hover) 50%, var(--bg-subtle) 100%);
+        background-size: 200% 100%;
+        animation: skeleton-shimmer 1.5s ease-in-out infinite;
+        border-radius: var(--radius-sm);
+    }
+    @keyframes skeleton-shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    .skeleton-table { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
+    .skeleton-row { display: flex; gap: 12px; align-items: center; }
+    .skeleton-cell { height: 14px; flex: 1; }
+
+    /* ===== STATUS BAR ===== */
+    .statusbar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 16px;
+        background: var(--bg-subtle);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        margin-bottom: 24px;
+        font-size: 12px;
+        color: var(--text-muted);
+        flex-wrap: wrap;
+    }
+    .statusbar-item { display: flex; align-items: center; gap: 6px; }
+    .statusbar-item .mono { color: var(--text); }
+    .statusbar-divider { width: 1px; height: 14px; background: var(--border-strong); }
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 999px;
+        background: var(--bg-hover);
+        color: var(--text);
+    }
+    .badge.success { background: var(--success-soft); color: var(--success); }
+    .badge.warning { background: var(--warning-soft); color: var(--warning); }
+    .badge.danger { background: var(--danger-soft); color: var(--danger); }
+    .badge.info { background: var(--accent-soft); color: var(--accent); }
+
+    /* ===== SQL BOX ===== */
+    .sql-box {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--text);
+        word-break: break-all;
+        white-space: pre-wrap;
+        margin-bottom: 24px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .sql-box .sql-keyword { color: var(--accent); font-weight: 500; }
+    .sql-box .sql-string { color: var(--success); }
+    .sql-box .sql-number { color: var(--warning); }
+    .sql-box .sql-comment { color: var(--text-faint); font-style: italic; }
+
+    .section-title {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 10px 16px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-lg);
+        font-size: 13px;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: all 200ms ease-out;
+        pointer-events: none;
+        z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: var(--success); }
+    .toast.success svg { color: var(--success); }
+    .toast.error { border-color: var(--danger); }
+    .toast.error svg { color: var(--danger); }
+
+    /* Density toggle */
+    .density-toggle {
+        display: inline-flex;
+        background: var(--bg-subtle);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 2px;
+    }
+    .density-toggle button {
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        background: transparent;
+        color: var(--text-muted);
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all var(--transition);
+    }
+    .density-toggle button.active {
+        background: var(--bg-elevated);
+        color: var(--text);
+        box-shadow: var(--shadow-sm);
+    }
+    body.density-compact .gridjs-td { padding: 6px 12px !important; }
+    body.density-compact .gridjs-th { padding: 6px 12px !important; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .container { padding: 16px; }
+        .page-header { flex-direction: column; align-items: flex-start; }
+        .metrics { grid-template-columns: repeat(2, 1fr); }
+        .toolbar { flex-direction: column; align-items: stretch; }
+        .toolbar-search { max-width: none; }
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+    <header class="page-header">
+        <div class="page-title-group">
+            <h1 class="page-title">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>
+                </svg>
+                Relatório SERPRO
+            </h1>
+            <div class="breadcrumb">
+                <a href="/">SERPRO Data</a>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+                <span>Relatório</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- EDITOR DE QUERY -->
+    <section class="editor">
+        <div class="editor-header">
+            <div class="editor-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+                Query SQL
+            </div>
+            <div class="editor-actions">
+                <button class="btn btn-sm" id="btn-clear" title="Limpar query">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    </svg>
+                    Limpar
+                </button>
+                <button class="btn btn-sm" id="btn-example" title="Carregar exemplo">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    Exemplo
+                </button>
+                <button class="btn btn-primary btn-sm" id="btn-run" title="Executar (Ctrl+Enter)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Executar
+                </button>
+            </div>
+        </div>
+        <div class="editor-body">
+            <textarea id="query" placeholder="SELECT * FROM dados_serpro WHERE ..."></textarea>
+        </div>
+        <div class="editor-footer">
+            <span id="query-stats">aguardando query</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> para executar</span>
+        </div>
+    </section>
+
+    <!-- METRICS / STATUS -->
+    <div class="metrics" id="metrics" style="display: none;">
+        <div class="metric">
+            <span class="metric-label">Linhas</span>
+            <span class="metric-value" id="m-rows">—</span>
+        </div>
+        <div class="metric">
+            <span class="metric-label">Colunas</span>
+            <span class="metric-value" id="m-cols">—</span>
+        </div>
+        <div class="metric">
+            <span class="metric-label">Query</span>
+            <span class="metric-value" id="m-query-ms">—</span>
+        </div>
+        <div class="metric">
+            <span class="metric-label">Total</span>
+            <span class="metric-value" id="m-total-ms">—</span>
+        </div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div class="statusbar" id="statusbar" style="display: none;">
+        <div class="statusbar-item">
+            <span class="badge" id="badge-status">—</span>
+        </div>
+        <div class="statusbar-divider"></div>
+        <div class="statusbar-item">
+            <span>Limite:</span>
+            <span class="mono" id="status-limit">100</span>
+        </div>
+        <div class="statusbar-divider"></div>
+        <div class="statusbar-item">
+            <span>Endpoint:</span>
+            <span class="mono">/api/relatorio</span>
+        </div>
+    </div>
+
+    <!-- TOOLBAR + TABELA -->
+    <div id="table-section" style="display: none;">
+        <div class="toolbar">
+            <div class="toolbar-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="table-search" placeholder="Buscar em todas as colunas...">
+            </div>
+            <div class="density-toggle" title="Densidade da tabela">
+                <button data-density="comfortable" class="active">Confortável</button>
+                <button data-density="compact">Compacto</button>
+            </div>
+            <button class="btn btn-sm" id="btn-copy-json" title="Copiar JSON">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                JSON
+            </button>
+            <button class="btn btn-sm" id="btn-csv" title="Baixar CSV">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                CSV
+            </button>
+        </div>
+        <div class="table-wrapper">
+            <div id="table"></div>
+        </div>
+    </div>
+
+    <!-- LOADING / SKELETON -->
+    <div id="loading" class="table-wrapper" style="display: none;">
+        <div class="skeleton-table">
+            <div class="skeleton-row"><div class="skeleton-cell skeleton" style="flex: 0.5;"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton" style="flex: 0.7;"></div><div class="skeleton-cell skeleton" style="flex: 0.4;"></div></div>
+            <div class="skeleton-row"><div class="skeleton-cell skeleton" style="flex: 0.5;"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton" style="flex: 0.7;"></div><div class="skeleton-cell skeleton" style="flex: 0.4;"></div></div>
+            <div class="skeleton-row"><div class="skeleton-cell skeleton" style="flex: 0.5;"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton" style="flex: 0.7;"></div><div class="skeleton-cell skeleton" style="flex: 0.4;"></div></div>
+            <div class="skeleton-row"><div class="skeleton-cell skeleton" style="flex: 0.5;"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton" style="flex: 0.7;"></div><div class="skeleton-cell skeleton" style="flex: 0.4;"></div></div>
+            <div class="skeleton-row"><div class="skeleton-cell skeleton" style="flex: 0.5;"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton"></div><div class="skeleton-cell skeleton" style="flex: 0.7;"></div><div class="skeleton-cell skeleton" style="flex: 0.4;"></div></div>
+        </div>
+    </div>
+
+    <!-- EMPTY / ERROR -->
+    <div id="empty" class="table-wrapper" style="display: none;">
+        <div class="empty-state">
+            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <div class="empty-state-title" id="empty-title">Nenhuma query executada</div>
+            <div class="empty-state-text" id="empty-text">Passe uma query via URL ou use o editor acima para começar.</div>
+        </div>
+    </div>
+
+    <!-- SQL APLICADO -->
+    <section id="sql-section" style="display: none;">
+        <div class="section-title">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+            SQL aplicado (com auto-LIMIT 100)
+        </div>
+        <pre class="sql-box" id="sql-applied"></pre>
+    </section>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/gridjs@6.2.0/dist/gridjs.umd.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ===== ELEMENTOS =====
+    const $ = (id) => document.getElementById(id);
+    const queryEl = $('query');
+    const btnRun = $('btn-run');
+    const btnClear = $('btn-clear');
+    const btnExample = $('btn-example');
+    const btnCopyJson = $('btn-copy-json');
+    const btnCsv = $('btn-csv');
+    const tableSearch = $('table-search');
+    const queryStats = $('query-stats');
+    const metrics = $('metrics');
+    const statusbar = $('statusbar');
+    const tableSection = $('table-section');
+    const loading = $('loading');
+    const empty = $('empty');
+    const sqlSection = $('sql-section');
+    const sqlApplied = $('sql-applied');
+    const toast = $('toast');
+
+    let grid = null;
+    let lastResult = null; // guarda último resultado para CSV/cópia
+
+    // ===== TOAST =====
+    function showToast(msg, type) {
+        toast.className = 'toast ' + (type || '');
+        toast.innerHTML = (type === 'success' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' :
+                          type === 'error' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' :
+                          '') + msg;
+        toast.classList.add('show');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => toast.classList.remove('show'), 2400);
+    }
+
+    // ===== SQL SYNTAX HIGHLIGHT =====
+    function highlightSql(sql) {
+        if (!sql) return '';
+        const keywords = /\b(SELECT|FROM|WHERE|AND|OR|NOT|NULL|IS|LIKE|IN|BETWEEN|GROUP|ORDER|BY|LIMIT|OFFSET|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|HAVING|UNION|ALL|DISTINCT|CASE|WHEN|THEN|ELSE|END|WITH|AS|COUNT|SUM|AVG|MIN|MAX|ASC|DESC)\b/gi;
+        const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return escape(sql)
+            .replace(/(--[^\n]*)/g, '<span class="sql-comment">$1</span>')
+            .replace(/('[^']*')/g, '<span class="sql-string">$1</span>')
+            .replace(keywords, '<span class="sql-keyword">$1</span>')
+            .replace(/\b(\d+)\b/g, '<span class="sql-number">$1</span>');
+    }
+
+    // ===== FORMAT =====
+    function formatNumber(n) {
+        if (n == null) return '—';
+        return new Intl.NumberFormat('pt-BR').format(n);
+    }
+    function formatMs(ms) {
+        if (ms == null) return '—';
+        if (ms < 1000) return ms + 'ms';
+        return (ms / 1000).toFixed(2) + 's';
+    }
+
+    // ===== TABELA =====
+    function renderTable(columns, rows) {
+        if (grid) { grid.destroy(); grid = null; }
+        const cols = columns.map((c, i) => ({
+            name: c,
+            id: c,
+            sort: { enabled: true },
+            formatter: (cell) => {
+                if (cell == null) return '<span style="color: var(--text-faint)">—</span>';
+                if (typeof cell === 'number') {
+                    return formatNumber(cell);
+                }
+                return escapeHtml(String(cell));
+            }
+        }));
+        const data = rows.map(r => columns.map(c => r[c]));
+        grid = new gridjs.Grid({
+            columns: cols,
+            data: data,
+            search: false,
+            sort: true,
+            pagination: { enabled: rows.length > 25, limit: 25, summary: false },
+            resizable: true,
+            language: {
+                'search': { 'placeholder': 'Buscar...' },
+                'pagination': {
+                    'previous': '‹',
+                    'next': '›',
+                    'showing': 'Mostrando',
+                    'to': 'até',
+                    'of': 'de',
+                    'results': 'resultados'
+                }
+            }
+        }).render($('table'));
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ===== CSV =====
+    function toCsv(columns, rows) {
+        const esc = (v) => {
+            if (v == null) return '';
+            const s = String(v);
+            if (/[",;\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        };
+        const head = columns.join(';');
+        const body = rows.map(r => columns.map(c => esc(r[c])).join(';')).join('\n');
+        return head + '\n' + body;
+    }
+
+    // ===== RUN =====
+    async function runQuery() {
+        const q = queryEl.value.trim();
+        if (!q) {
+            showEmpty('Query vazia', 'Digite um SELECT no editor acima e clique em Executar.');
+            return;
+        }
+        // Update URL sem reload
+        const u = new URL(window.location.href);
+        u.searchParams.set('q', q);
+        history.replaceState(null, '', u.toString());
+
+        showLoading();
+        try {
+            const url = '/api/relatorio?q=' + encodeURIComponent(q);
+            const t0 = Date.now();
+            const r = await fetch(url);
+            const j = await r.json();
+            const elapsed = Date.now() - t0;
+
+            if (!j.success) {
+                showError(j.error || 'Erro desconhecido', j);
+                showToast(j.timed_out ? 'Timeout na query' : 'Erro na query', 'error');
+                return;
+            }
+
+            const d = j.data;
+            lastResult = d;
+            renderMetrics(d, elapsed);
+            renderTable(d.columns, d.rows);
+            showSuccess(d);
+            showToast(d.rows.length + ' linhas carregadas', 'success');
+        } catch (err) {
+            showError(err.message, null);
+            showToast('Erro de rede: ' + err.message, 'error');
+        }
+    }
+
+    function renderMetrics(d, totalMs) {
+        metrics.style.display = 'grid';
+        $('m-rows').textContent = formatNumber(d.row_count);
+        $('m-cols').textContent = d.columns.length;
+        $('m-query-ms').textContent = formatMs(d.query_ms);
+        $('m-total-ms').textContent = formatMs(d.total_ms || totalMs);
+    }
+
+    function showLoading() {
+        metrics.style.display = 'none';
+        statusbar.style.display = 'none';
+        tableSection.style.display = 'none';
+        sqlSection.style.display = 'none';
+        empty.style.display = 'none';
+        loading.style.display = 'block';
+    }
+
+    function showEmpty(title, text) {
+        metrics.style.display = 'none';
+        statusbar.style.display = 'none';
+        tableSection.style.display = 'none';
+        loading.style.display = 'none';
+        sqlSection.style.display = 'none';
+        empty.style.display = 'block';
+        $('empty-title').textContent = title;
+        $('empty-text').textContent = text;
+        queryStats.textContent = 'aguardando query';
+    }
+
+    function showError(msg, data) {
+        metrics.style.display = 'none';
+        statusbar.style.display = 'flex';
+        tableSection.style.display = 'none';
+        loading.style.display = 'none';
+        empty.style.display = 'block';
+        $('empty-title').textContent = 'Erro na query';
+        $('empty-text').textContent = msg;
+        // Empty vira error visualmente
+        empty.querySelector('.empty-state').className = 'error-state';
+        const iconSvg = `<svg class="error-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+        empty.querySelector('.error-state').innerHTML = iconSvg +
+            `<div class="error-state-title">Erro na query</div><div class="error-state-text">${escapeHtml(msg)}</div>`;
+        $('badge-status').className = 'badge danger';
+        $('badge-status').textContent = data && data.timed_out ? 'TIMEOUT' : 'ERRO';
+        // SQL box
+        if (data && data.sql_aplicado) {
+            sqlSection.style.display = 'block';
+            sqlApplied.innerHTML = highlightSql(data.sql_aplicado);
+        }
+    }
+
+    function showSuccess(d) {
+        metrics.style.display = 'grid';
+        statusbar.style.display = 'flex';
+        tableSection.style.display = 'block';
+        loading.style.display = 'none';
+        empty.style.display = 'none';
+        empty.querySelector('.error-state') && (empty.querySelector('.error-state').className = 'empty-state');
+        sqlSection.style.display = 'block';
+        sqlApplied.innerHTML = highlightSql(d.sql_aplicado);
+
+        const badge = $('badge-status');
+        if (d.row_count >= d.max_rows) {
+            badge.className = 'badge warning';
+            badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> LIMITE ATINGIDO (${d.row_count}/${d.max_rows})`;
+        } else {
+            badge.className = 'badge success';
+            badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> OK`;
+        }
+        queryStats.textContent = `${d.row_count} linha${d.row_count !== 1 ? 's' : ''} • ${d.columns.length} coluna${d.columns.length !== 1 ? 's' : ''} • ${formatMs(d.query_ms)}`;
+    }
+
+    // ===== EVENTOS =====
+    btnRun.addEventListener('click', runQuery);
+    queryEl.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            runQuery();
+        }
+    });
+
+    btnClear.addEventListener('click', () => {
+        queryEl.value = '';
+        const u = new URL(window.location.href);
+        u.searchParams.delete('q');
+        history.replaceState(null, '', u.toString());
+        showEmpty('Nenhuma query executada', 'Digite um SELECT no editor acima e clique em Executar.');
+    });
+
+    const examples = [
+        "SELECT * FROM dados_serpro WHERE opcao_mei = 'S' AND municipio LIKE '%Pinhalzinho%' AND ano_abertura = 2026",
+        "SELECT uf, SUM(quantidade) AS total FROM dados_serpro WHERE tipo_situacao = 'Ativa' GROUP BY uf ORDER BY total DESC",
+        "SELECT tipo_situacao, opcao_mei, porte, COUNT(*) AS registros, SUM(quantidade) AS empresas FROM dados_serpro GROUP BY tipo_situacao, opcao_mei, porte ORDER BY empresas DESC",
+        "SELECT ano_abertura, COUNT(*) AS novos_registros FROM dados_serpro WHERE opcao_mei = 'S' GROUP BY ano_abertura ORDER BY ano_abertura DESC"
+    ];
+    btnExample.addEventListener('click', () => {
+        const ex = examples[Math.floor(Math.random() * examples.length)];
+        queryEl.value = ex;
+        queryEl.focus();
+    });
+
+    tableSearch.addEventListener('input', (e) => {
+        if (grid) grid.search(e.target.value);
+    });
+
+    document.querySelectorAll('.density-toggle button').forEach(b => {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('.density-toggle button').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            document.body.classList.toggle('density-compact', b.dataset.density === 'compact');
+        });
+    });
+
+    btnCopyJson.addEventListener('click', async () => {
+        if (!lastResult) return;
+        try {
+            await navigator.clipboard.writeText(JSON.stringify(lastResult.rows, null, 2));
+            showToast('JSON copiado (' + lastResult.rows.length + ' linhas)', 'success');
+        } catch (e) {
+            showToast('Falha ao copiar: ' + e.message, 'error');
+        }
+    });
+
+    btnCsv.addEventListener('click', () => {
+        if (!lastResult) return;
+        const csv = '\ufeff' + toCsv(lastResult.columns, lastResult.rows);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        link.download = `relatorio_${ts}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        showToast('CSV baixado', 'success');
+    });
+
+    // ===== INICIALIZAÇÃO =====
+    const urlQ = new URLSearchParams(window.location.search).get('q');
+    if (urlQ) {
+        queryEl.value = urlQ;
+        runQuery();
+    } else {
+        showEmpty('Nenhuma query executada', 'Passe uma query via URL: <code class="mono">/relatorio?q=SELECT ...</code> ou use o editor acima.');
+    }
+})();
+</script>
+
+</body>
+</html>

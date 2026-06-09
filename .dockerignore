@@ -1,0 +1,18 @@
+# Ignore all files by default
+*
+
+# Allow the serpro-viewer directory
+!serpro-viewer
+
+# Ignore node_modules and data inside serpro-viewer
+serpro-viewer/node_modules
+serpro-viewer/snapshots
+serpro-viewer/*.db
+serpro-viewer/*.log
+
+# Ignore databases and logs in the root
+*.db
+*.log
+__pycache__
+downloads_serpro
+serpro_snapshots_logs

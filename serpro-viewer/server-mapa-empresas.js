@@ -5,6 +5,7 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
+const { Worker } = require('worker_threads');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -212,7 +213,200 @@ app.get('/api/colunas', (req, res) => {
     }
 });
 
+// ========== /api/relatorio ==========
+// Executor de SELECT arbitrário com 3 proteções:
+//   1) Whitelist de keywords (somente SELECT / WITH permitidos; resto é rejeitado)
+//   2) Auto-LIMIT 100 (remove qualquer LIMIT do usuário e injeta o nosso)
+//   3) Timeout via worker_threads (query roda em thread isolada, é morta se passar do limite)
+//
+// GET /api/relatorio?q=<SELECT ...>
+const RELATORIO_MAX_LIMIT = 100;
+const RELATORIO_TIMEOUT_MS = 15_000;
+
+function sanitizeSelect(rawSql) {
+    // Recebe a query crua, devolve { ok, sql, error }
+    if (typeof rawSql !== 'string' || !rawSql.trim()) {
+        return { ok: false, error: 'Query vazia. Use ?q=<SELECT ...>' };
+    }
+
+    // Tamanho máximo razoável (10KB evita payloads absurdos)
+    if (rawSql.length > 10_000) {
+        return { ok: false, error: 'Query muito longa (máx 10KB)' };
+    }
+
+    // Remove /* ... */ e -- ... (com cuidado pra não comer conteúdo de string)
+    // Estratégia: varre char a char, alterna estados string/ident.
+    let cleaned = '';
+    let i = 0;
+    const n = rawSql.length;
+    let inSingle = false, inDouble = false, inBracket = false;
+    while (i < n) {
+        const c = rawSql[i], nx = rawSql[i + 1];
+        if (!inSingle && !inDouble && !inBracket && c === '-' && nx === '-') {
+            // comentário até fim da linha
+            while (i < n && rawSql[i] !== '\n') i++;
+            continue;
+        }
+        if (!inSingle && !inDouble && !inBracket && c === '/' && nx === '*') {
+            i += 2;
+            while (i < n && !(rawSql[i] === '*' && rawSql[i + 1] === '/')) i++;
+            i += 2;
+            continue;
+        }
+        if (c === "'" && !inDouble && !inBracket) {
+            // string single-quote: copiar até próximo ' não escapado ('' é escape)
+            cleaned += c; i++;
+            while (i < n) {
+                if (rawSql[i] === "'" && rawSql[i + 1] === "'") {
+                    // '' = aspas escapadas dentro da string
+                    cleaned += "''"; i += 2; continue;
+                }
+                if (rawSql[i] === "'") {
+                    cleaned += c; i++; break;
+                }
+                cleaned += rawSql[i]; i++;
+            }
+            continue;
+        }
+        if (c === '"' && !inSingle && !inBracket) {
+            cleaned += c; i++;
+            while (i < n) {
+                if (rawSql[i] === '"' && rawSql[i + 1] === '"') {
+                    cleaned += '""'; i += 2; continue;
+                }
+                if (rawSql[i] === '"') {
+                    cleaned += c; i++; break;
+                }
+                cleaned += rawSql[i]; i++;
+            }
+            continue;
+        }
+        if (c === '[' && !inSingle && !inDouble) { inBracket = true; cleaned += c; i++; continue; }
+        if (c === ']' && inBracket) { inBracket = false; cleaned += c; i++; continue; }
+        cleaned += c; i++;
+    }
+
+    const stripped = cleaned.trim().replace(/;\s*$/, '');
+
+    // Rejeita múltiplas sentenças (vírgula-eu-sei mas `;` no meio é suspeito)
+    // Como não há `;` restantes (removidos acima), qualquer `;` aqui significa que havia mais.
+    // Já cortamos trailing, mas e `SELECT 1; SELECT 2` ? checa se tinha `;` antes do strip.
+    // Heurística: se a raw original tinha `;` e o stripped não termina com nada após, é multi.
+    // Mais simples: rejeita qualquer `;` na stripped.
+    if (/;/.test(stripped)) {
+        return { ok: false, error: 'Múltiplas sentenças não são permitidas (apenas 1 SELECT)' };
+    }
+
+    // Primeira keyword significativa
+    const headMatch = stripped.match(/^(\s*(?:--[^\n]*\n|\/\*[\s\S]*?\*\/\s)*)*(WITH|SELECT)\b/i);
+    if (!headMatch) {
+        return { ok: false, error: 'Apenas queries SELECT (ou WITH ... SELECT) são permitidas' };
+    }
+
+    // Whitelist de keywords perigosas (case-insensitive, palavra inteira)
+    const forbidden = /\b(ATTACH|DETACH|PRAGMA|LOAD_EXTENSION|VACUUM|REINDEX|UPDATE|DELETE|INSERT|REPLACE|DROP|ALTER|CREATE|TRUNCATE|RENAME|GRANT|REVOKE)\b/i;
+    const fmatch = stripped.match(forbidden);
+    if (fmatch) {
+        return { ok: false, error: `Keyword proibida: ${fmatch[1].toUpperCase()}` };
+    }
+
+    // Auto-LIMIT: remove qualquer LIMIT existente (com OFFSET opcional) e injeta o nosso
+    // Suporta: LIMIT <n>, LIMIT <n> OFFSET <m>, LIMIT <m>, <n>  (variante "offset, count")
+    let withLimit = stripped
+        .replace(/\bLIMIT\s+\d+\s*,\s*\d+\b/gi, '')           // LIMIT m, n  (offset, count)
+        .replace(/\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\b/gi, '');   // LIMIT n [OFFSET m]
+    const finalSql = withLimit.trim() + `\nLIMIT ${RELATORIO_MAX_LIMIT}`;
+
+    return { ok: true, sql: finalSql };
+}
+
+function runRelatorioWorker(dbPath, sql, timeoutMs) {
+    // Roda a query num worker thread. Resolve:
+    //   { ok: true, rows, columns, elapsed_ms }
+    //   { ok: false, error, timed_out }
+    return new Promise((resolve) => {
+        const worker = new Worker(path.join(__dirname, 'relatorio-worker.js'), {
+            workerData: { dbPath, sql, timeoutMs }
+        });
+        let settled = false;
+        const t0 = Date.now();
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(killer);
+            worker.terminate().catch(() => {});
+            resolve(result);
+        };
+
+        const killer = setTimeout(() => {
+            finish({ ok: false, error: `Timeout: query excedeu ${timeoutMs}ms`, timed_out: true, elapsed_ms: Date.now() - t0 });
+        }, timeoutMs);
+
+        worker.on('message', (msg) => {
+            if (msg.ok) {
+                finish({ ok: true, rows: msg.rows, columns: msg.columns, elapsed_ms: msg.elapsed_ms });
+            } else {
+                finish({ ok: false, error: msg.error, elapsed_ms: msg.elapsed_ms || (Date.now() - t0) });
+            }
+        });
+        worker.on('error', (err) => {
+            finish({ ok: false, error: `Worker erro: ${err.message}`, elapsed_ms: Date.now() - t0 });
+        });
+        worker.on('exit', (code) => {
+            if (!settled && code !== 0) {
+                finish({ ok: false, error: `Worker saiu com código ${code}`, elapsed_ms: Date.now() - t0 });
+            }
+        });
+    });
+}
+
+app.get('/api/relatorio', async (req, res) => {
+    const raw = req.query.q;
+    const t0 = Date.now();
+    try {
+        const sanitized = sanitizeSelect(raw);
+        if (!sanitized.ok) {
+            return res.status(400).json({ success: false, error: sanitized.error });
+        }
+
+        const result = await runRelatorioWorker(DB_PATH, sanitized.sql, RELATORIO_TIMEOUT_MS);
+
+        if (!result.ok) {
+            const status = result.timed_out ? 408 : 400;
+            return res.status(status).json({
+                success: false,
+                error: result.error,
+                timed_out: !!result.timed_out,
+                sql_aplicado: sanitized.sql,
+                elapsed_ms: result.elapsed_ms
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                rows: result.rows,
+                columns: result.columns,
+                row_count: result.rows.length,
+                max_rows: RELATORIO_MAX_LIMIT,
+                sql_aplicado: sanitized.sql,
+                query_ms: result.elapsed_ms,
+                total_ms: Date.now() - t0
+            }
+        });
+    } catch (err) {
+        console.error('[ERRO] /api/relatorio:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ========== STATIC FILES ==========
+
+// Rota dedicada para /relatorio (resolve antes do static, que não auto-resolve .html em /relatorio)
+app.get('/relatorio', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'relatorio.html'));
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 

@@ -702,12 +702,6 @@
                     </svg>
                     <span>Tabela de Dados</span>
                 </div>
-                <div class="nav-item" data-page="estatisticas">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M18 20V10M12 20V4M6 20v-6"/>
-                    </svg>
-                    <span>Estatísticas</span>
-                </div>
             </nav>
         </aside>
 
@@ -836,9 +830,7 @@
             </div>
 </div>
 
-            <!-- Página: Estatísticas MEI -->
-            <!-- Página: Estatísticas MEI (carregado via external) -->
-            <div id="page-estatisticas-placeholder" data-page="estatisticas"></div>
+            <!-- Página: Estatísticas MEI removida -->
         </main>
     </div>
 
@@ -866,7 +858,6 @@
         document.addEventListener('DOMContentLoaded', async () => {
             loadColumns();
             loadData();
-            await loadExternalPages();
 
             // Event listeners
             document.getElementById('globalSearch').addEventListener('input', debounce(handleGlobalSearch, 300));
@@ -882,22 +873,6 @@
                 document.getElementById('sidebar').classList.toggle('open');
             });
         });
-
-        // Carregar páginas externas
-        async function loadExternalPages() {
-            try {
-                const response = await fetch('/estatisticas-mei.html');
-                const html = await response.text();
-                const placeholder = document.getElementById('page-estatisticas-placeholder');
-                if (placeholder) {
-                    placeholder.outerHTML = html;
-                    // Após carregar, executar loadEstatisticasPage
-                    loadEstatisticasPage();
-                }
-            } catch (err) {
-                console.error('Erro ao carregar páginas externas:', err);
-            }
-        }
 
         // Navegação entre páginas
         function navigateToPage(pageName) {
@@ -924,11 +899,6 @@
             }
 
             currentPageName = pageName;
-
-            // Carregar dados específicos da página
-            if (pageName === 'estatisticas') {
-                loadEstatisticasPage();
-            }
         }
 
         // Carregar colunas
@@ -1182,171 +1152,6 @@
                 });
             }
         }
-
-        // Carregar página de estatísticas MEI
-        async function loadEstatisticasPage() {
-            // Carregar UF options
-            await loadUFOptions();
-
-            // Definir datas padrão - mostrar apenas dados após 2009
-            document.getElementById('filterDataInicio').value = '2010-01-01';
-            document.getElementById('filterDataFim').value = '2024-12-31';
-
-            await loadEstatisticasMEI();
-        }
-
-        // Carregar opções de UF
-        async function loadUFOptions() {
-            try {
-                const response = await fetch('/api/estatisticas');
-                const result = await response.json();
-
-                if (result.success) {
-                    const ufSelect = document.getElementById('filterUF');
-                    ufSelect.innerHTML = '<option value="">Todos os Estados</option>';
-
-                    result.data.porUF.forEach(item => {
-                        ufSelect.innerHTML += `<option value="${item.uf}">${item.uf}</option>`;
-                    });
-
-                    // Carregar municípios
-                    loadMunicipioOptions();
-                }
-            } catch (err) {
-                console.error('Erro ao carregar UFs:', err);
-            }
-        }
-
-        // Carregar opções de município
-        async function loadMunicipioOptions(uf = '') {
-            try {
-                // Usar API de estatísticas para obter lista de municípios únicos
-                // Limitamos a 100 para não sobrecarregar o dropdown
-                const response = await fetch('/api/estatisticas');
-                const result = await response.json();
-
-                if (result.success) {
-                    const municipioSelect = document.getElementById('filterMunicipio');
-                    // Extrair municípios únicos dos dados (amostragem)
-                    // Como não temos endpoint direto, mantemos "Todos os Municípios" por ora
-                    // O filtro será aplicado via LIKE no backend
-                    municipioSelect.innerHTML = '<option value="">Todos os Municípios</option>';
-                }
-            } catch (err) {
-                console.error('Erro ao carregar municípios:', err);
-            }
-        }
-
-        // Carregar estatísticas MEI
-        async function loadEstatisticasMEI() {
-            try {
-                console.log('[MEI] ===== INICIO loadEstatisticasMEI =====');
-                
-                const dataInicioEl = document.getElementById('filterDataInicio');
-                const dataFimEl = document.getElementById('filterDataFim');
-                const ufEl = document.getElementById('filterUF');
-                const municipioEl = document.getElementById('filterMunicipio');
-                
-                console.log('[MEI] Elementos encontrados:', {
-                    dataInicio: dataInicioEl,
-                    dataFim: dataFimEl,
-                    uf: ufEl,
-                    municipio: municipioEl
-                });
-                
-                const dataInicio = dataInicioEl ? dataInicioEl.value : null;
-                const dataFim = dataFimEl ? dataFimEl.value : null;
-                const uf = ufEl ? ufEl.value : null;
-                const municipio = municipioEl ? municipioEl.value : null;
-
-                console.log('[MEI] Valores dos filtros:', { dataInicio, dataFim, uf, municipio });
-
-                // Mostrar loading
-                const meiAtivosEl = document.getElementById('meiAtivos');
-                const meiBaixadosEl = document.getElementById('meiBaixados');
-                const meiTotalEl = document.getElementById('meiTotal');
-                
-                console.log('[MEI] Cards encontrados:', {
-                    meiAtivos: meiAtivosEl,
-                    meiBaixados: meiBaixadosEl,
-                    meiTotal: meiTotalEl
-                });
-                
-                if (meiAtivosEl) meiAtivosEl.textContent = '...';
-                if (meiBaixadosEl) meiBaixadosEl.textContent = '...';
-                if (meiTotalEl) meiTotalEl.textContent = '...';
-
-                // Construir query params
-                const params = new URLSearchParams();
-                if (dataInicio) params.set('data_inicio', dataInicio);
-                if (dataFim) params.set('data_fim', dataFim);
-                if (uf) params.set('uf', uf);
-                if (municipio) params.set('municipio', municipio);
-
-                const url = `/api/estatisticas-mei?${params}`;
-                console.log('[MEI] URL da requisição:', url);
-                console.log('[MEI] Fetch iniciado...');
-
-                // Usar nova API que processa no servidor
-                const response = await fetch(url);
-                console.log('[MEI] Fetch completado, status:', response.status);
-
-                if (!response.ok) {
-                    console.error('[MEI] Response not ok:', response.status, response.statusText);
-                    if (meiAtivosEl) meiAtivosEl.textContent = 'Erro';
-                    if (meiBaixadosEl) meiBaixadosEl.textContent = 'Erro';
-                    if (meiTotalEl) meiTotalEl.textContent = 'Erro';
-                    return;
-                }
-
-                const result = await response.json();
-                console.log('[MEI] Result recebido:', JSON.stringify(result).substring(0, 500));
-
-                if (result.success) {
-                    const { meiAtivos, meiBaixados, meiTotal, evolucaoAnual } = result.data;
-                    console.log('[MEI] Dados processados:', { meiAtivos, meiBaixados, meiTotal, evolucaoAnualLength: evolucaoAnual ? evolucaoAnual.length : 0 });
-
-                    // Atualizar cards
-                    if (meiAtivosEl) meiAtivosEl.textContent = formatNumber(meiAtivos);
-                    if (meiBaixadosEl) meiBaixadosEl.textContent = formatNumber(meiBaixados);
-                    if (meiTotalEl) meiTotalEl.textContent = formatNumber(meiTotal);
-                    console.log('[MEI] Cards atualizados com sucesso');
-
-                    // Renderizar tabela
-                    const tbody = document.getElementById('tableBodyEvolucaoAnual');
-                    console.log('[MEI] Tabela body encontrado:', tbody);
-                    if (tbody && evolucaoAnual) {
-                        tbody.innerHTML = evolucaoAnual.map(item => {
-                            const saldo = item.aberturas - item.baixas;
-                            return `
-                                <tr>
-                                    <td>${item.ano}</td>
-                                    <td>${formatNumber(item.aberturas)}</td>
-                                    <td>${formatNumber(item.baixas)}</td>
-                                    <td style="color: ${saldo >= 0 ? '#10b981' : '#dc2626'}">${formatNumber(saldo)}</td>
-                                    <td>${formatNumber(item.ativos)}</td>
-                                </tr>
-                            `;
-                        }).join('');
-                        console.log('[MEI] Tabela renderizada, linhas:', evolucaoAnual.length);
-                    } else {
-                        console.warn('[MEI] Tabela body ou dados não encontrados');
-                    }
-                } else {
-                    console.error('[MEI] result.success = false:', result);
-                }
-                console.log('[MEI] ===== FIM loadEstatisticasMEI =====');
-            } catch (err) {
-                console.error('[MEI] ERRO catch:', err.message, err.stack);
-                const meiAtivosEl = document.getElementById('meiAtivos');
-                const meiBaixadosEl = document.getElementById('meiBaixados');
-                const meiTotalEl = document.getElementById('meiTotal');
-                if (meiAtivosEl) meiAtivosEl.textContent = 'Erro';
-                if (meiBaixadosEl) meiBaixadosEl.textContent = 'Erro';
-                if (meiTotalEl) meiTotalEl.textContent = 'Erro';
-            }
-        }
-
 
         // Carregar dados + atualizar cards resumo (stats) em paralelo
         async function loadData() {
