@@ -436,7 +436,149 @@ def clicar_exportar_final():
         salvar_snapshot("05_erro_exportacao")
         return False
 
-def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_reimportar=None):
+def criar_tabela_brutos_se_nao_existe(cnxn, nome_tabela_brutos='dados_brutos_mes'):
+    """Cria tabela temporaria para dados BRUTOS do mes atual (com des_secao).
+
+    Esta tabela guarda o .xlsx importado de um mes especifico ANTES da
+    agregacao. Sempre e limpa (DELETE) antes de cada importacao mensal.
+    """
+    cur = cnxn.cursor()
+    cur.execute(f'''
+        CREATE TABLE IF NOT EXISTS {nome_tabela_brutos} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ano_abertura TEXT,
+            mes_abertura TEXT,
+            ano_baixa TEXT,
+            mes_baixa TEXT,
+            regiao TEXT,
+            uf TEXT,
+            municipio TEXT,
+            natureza_juridica TEXT,
+            des_secao TEXT,
+            tipo_situacao TEXT,
+            porte TEXT,
+            opcao_mei TEXT,
+            quantidade INTEGER
+        )
+    ''')
+    cnxn.commit()
+    print(f"  [TEMP] Tabela '{nome_tabela_brutos}' pronta")
+
+
+def limpar_tabela_brutos(cnxn, nome_tabela_brutos='dados_brutos_mes'):
+    """Limpa a tabela temporaria de dados brutos. Chamada antes de cada import."""
+    cur = cnxn.cursor()
+    cur.execute(f"DELETE FROM {nome_tabela_brutos}")
+    cnxn.commit()
+    print(f"  [TEMP] Tabela '{nome_tabela_brutos}' limpa")
+
+
+def agregar_e_inserir(cnxn,
+                       nome_tabela_brutos='dados_brutos_mes',
+                       nome_tabela_destino='dados_serpro',
+                       ano_abertura=None, mes_abertura=None):
+    """Agrega dados brutos do mes SOMANDO quantidade por 12 colunas (sem des_secao).
+
+    Para cada (ano, mes) lido da tabela temporaria, executa:
+        INSERT OR IGNORE INTO dados_serpro (12 cols + quantidade)
+        SELECT 12 cols, SUM(quantidade)
+        FROM dados_brutos_mes
+        WHERE ano_abertura=? AND mes_abertura=?
+        GROUP BY 12 cols
+
+    Se a UNIQUE constraint de dados_serpro ja tem 12 colunas (versao nova),
+    a soma agrega naturalmente. Se ainda tem 13 colunas (versao antiga),
+    a soma de varias linhas identicas nas 13 colunas (incluindo des_secao)
+    ainda funciona, mas nao economiza espaco.
+    """
+    cur = cnxn.cursor()
+    if ano_abertura is None or mes_abertura is None:
+        return False
+    # Descobre as colunas da tabela destino via PRAGMA
+    cur.execute(f"PRAGMA table_info({nome_tabela_destino})")
+    cols_destino = [r[1] for r in cur.fetchall() if r[1] != 'id']
+
+    # Se a destino tem des_secao, precisamos agregar 12 colunas.
+    if 'des_secao' in cols_destino:
+        # Modo legado: destino ainda tem des_secao, entao inserimos cada linha
+        # da temp com INSERT OR IGNORE. Sem agregacao real.
+        cur.execute(f'''
+            INSERT OR IGNORE INTO {nome_tabela_destino}
+                (ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                 regiao, uf, municipio, natureza_juridica,
+                 des_secao, tipo_situacao, porte, opcao_mei, quantidade)
+            SELECT
+                ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                regiao, uf, municipio, natureza_juridica,
+                des_secao, tipo_situacao, porte, opcao_mei, quantidade
+            FROM {nome_tabela_brutos}
+            WHERE ano_abertura = ? AND mes_abertura = ?
+        ''', (str(ano_abertura), str(mes_abertura)))
+        inseridos = cur.rowcount
+        cnxn.commit()
+        return inseridos > 0
+
+    # Modo novo: destino tem 12 colunas (sem des_secao) + quantidade
+    cur.execute(f'''
+        INSERT OR IGNORE INTO {nome_tabela_destino}
+            (ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+             regiao, uf, municipio, natureza_juridica,
+             tipo_situacao, porte, opcao_mei, quantidade)
+        SELECT
+            ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+            regiao, uf, municipio, natureza_juridica,
+            tipo_situacao, porte, opcao_mei,
+            SUM(quantidade) AS quantidade
+        FROM {nome_tabela_brutos}
+        WHERE ano_abertura = ? AND mes_abertura = ?
+        GROUP BY
+            ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+            regiao, uf, municipio, natureza_juridica,
+            tipo_situacao, porte, opcao_mei
+    ''', (str(ano_abertura), str(mes_abertura)))
+    cnxn.commit()
+    inseridos = cur.rowcount
+    print(f"  [AGREG] {ano_abertura}/{mes_abertura}: {inseridos:,} grupos unicos inseridos em {nome_tabela_destino}")
+    return inseridos
+
+
+def criar_tabela_dados_serpro_agregada(cnxn, nome_tabela='dados_serpro'):
+    """Cria a tabela dados_serpro com schema OTIMIZADO (12 colunas + quantidade).
+
+    A coluna des_secao foi removida. A unique constraint e sobre 12 colunas
+    (sem des_secao). A coluna quantidade passa a ser a SOMA das quantidades
+    das linhas que compartilham os 12 campos (ou seja, a coluna que era
+    'quantidade' no .xlsx vira a soma das des_secao repetidas).
+    """
+    cur = cnxn.cursor()
+    cur.execute(f'''
+        CREATE TABLE IF NOT EXISTS {nome_tabela} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ano_abertura TEXT,
+            mes_abertura TEXT,
+            ano_baixa TEXT,
+            mes_baixa TEXT,
+            regiao TEXT,
+            uf TEXT,
+            municipio TEXT,
+            natureza_juridica TEXT,
+            tipo_situacao TEXT,
+            porte TEXT,
+            opcao_mei TEXT,
+            quantidade INTEGER,
+            UNIQUE(
+                ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                regiao, uf, municipio, natureza_juridica,
+                tipo_situacao, porte, opcao_mei, quantidade
+            )
+        )
+    ''')
+    cnxn.commit()
+    print(f"  [TABELA] '{nome_tabela}' (12 colunas + id + quantidade) pronta")
+
+
+def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_reimportar=None,
+                              usar_agregacao=True):
     """Importa o arquivo Excel baixado para o banco SQLite.
 
     Logica:
@@ -449,10 +591,17 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
               que voce queira refresh.
             * Anos passados (nao listados) permanecem intactos.
 
+    Quando usar_agregacao=True (default), o import ocorre em 2 fases:
+        Fase A: le xlsx -> INSERT INTO dados_brutos_mes (sempre limpa antes)
+        Fase B: SELECT com GROUP BY 12 colunas + SUM(quantidade)
+                -> INSERT OR IGNORE INTO dados_serpro
+
     Args:
         caminho_arquivo: caminho do .xlsx
         limpar_antes: se True, faz DELETE FROM antes (modo single-shot).
         anos_para_reimportar: lista de anos a recarregar (ex: [2026]).
+        usar_agregacao: se True, passa pela tabela temporaria + agregacao.
+                        se False, insere direto (modo legado).
     """
     print("\n" + "="*60)
     print("IMPORTANDO EXCEL PARA SQLITE")
@@ -464,66 +613,68 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
         print(f"Modo: REIMPORTAR ANOS {anos_para_reimportar} (demais preservados)")
     else:
         print("Modo: ACUMULAR (preserva tudo, so adiciona)")
+    if usar_agregacao:
+        print("Agregacao: ATIVA (2 fases: xlsx -> dados_brutos_mes -> dados_serpro)")
+    else:
+        print("Agregacao: DESATIVADA (modo legado, insere direto)")
     sys.stdout.flush()
 
     nome_tabela = 'dados_serpro'
+    nome_tabela_brutos = 'dados_brutos_mes'
 
     try:
         # Conectar ao banco
         cnxn = sqlite3.connect('base_dados.db')
         cursor = cnxn.cursor()
 
-        # Criar tabela se nao existir (com UNIQUE constraint de 13 campos)
-        cursor.execute(f'''
-            CREATE TABLE IF NOT EXISTS {nome_tabela} (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ano_abertura TEXT,
-                mes_abertura TEXT,
-                ano_baixa TEXT,
-                mes_baixa TEXT,
-                regiao TEXT,
-                uf TEXT,
-                municipio TEXT,
-                natureza_juridica TEXT,
-                des_secao TEXT,
-                tipo_situacao TEXT,
-                porte TEXT,
-                opcao_mei TEXT,
-                quantidade INTEGER,
-                UNIQUE(
-                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
-                    regiao, uf, municipio, natureza_juridica,
-                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
-                )
-            )
-        ''')
+        # Criar tabela temporaria de dados brutos (sempre com 13 cols + des_secao)
+        criar_tabela_brutos_se_nao_existe(cnxn, nome_tabela_brutos)
+        limpar_tabela_brutos(cnxn, nome_tabela_brutos)
         cnxn.commit()
 
-        # Migracao automatica: se a tabela existe mas sem UNIQUE
-        cursor.execute(f"PRAGMA index_list({nome_tabela})")
-        indices = [r[1] for r in cursor.fetchall()]
-        tem_unique = False
-        for idx in indices:
-            try:
-                cursor.execute(f"PRAGMA index_info({idx})")
-                cols_idx = [r[2] for r in cursor.fetchall()]
-                if len(cols_idx) >= 13:
-                    tem_unique = True
-                    break
-            except Exception:
-                pass
-
-        if not tem_unique:
-            print("⚠ Tabela antiga sem UNIQUE. Migrando...")
-            cursor.execute(f"ALTER TABLE {nome_tabela} RENAME TO {nome_tabela}_old")
+        # Criar tabela se nao existir
+        if usar_agregacao:
+            # Schema otimizado: 12 cols (sem des_secao) + quantidade
             cursor.execute(f'''
-                CREATE TABLE {nome_tabela} (
+                CREATE TABLE IF NOT EXISTS {nome_tabela} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ano_abertura TEXT, mes_abertura TEXT,
-                    ano_baixa TEXT, mes_baixa TEXT,
-                    regiao TEXT, uf TEXT, municipio TEXT,
-                    natureza_juridica TEXT, des_secao TEXT,
-                    tipo_situacao TEXT, porte TEXT, opcao_mei TEXT,
+                    ano_abertura TEXT,
+                    mes_abertura TEXT,
+                    ano_baixa TEXT,
+                    mes_baixa TEXT,
+                    regiao TEXT,
+                    uf TEXT,
+                    municipio TEXT,
+                    natureza_juridica TEXT,
+                    tipo_situacao TEXT,
+                    porte TEXT,
+                    opcao_mei TEXT,
+                    quantidade INTEGER,
+                    UNIQUE(
+                        ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                        regiao, uf, municipio, natureza_juridica,
+                        tipo_situacao, porte, opcao_mei, quantidade
+                    )
+                )
+            ''')
+            cnxn.commit()
+        else:
+            # Modo legado: 13 cols (com des_secao)
+            cursor.execute(f'''
+                CREATE TABLE IF NOT EXISTS {nome_tabela} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ano_abertura TEXT,
+                    mes_abertura TEXT,
+                    ano_baixa TEXT,
+                    mes_baixa TEXT,
+                    regiao TEXT,
+                    uf TEXT,
+                    municipio TEXT,
+                    natureza_juridica TEXT,
+                    des_secao TEXT,
+                    tipo_situacao TEXT,
+                    porte TEXT,
+                    opcao_mei TEXT,
                     quantidade INTEGER,
                     UNIQUE(
                         ano_abertura, mes_abertura, ano_baixa, mes_baixa,
@@ -532,21 +683,73 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
                     )
                 )
             ''')
-            cursor.execute(f'''
-                INSERT OR IGNORE INTO {nome_tabela} (
-                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
-                    regiao, uf, municipio, natureza_juridica,
-                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
-                )
-                SELECT
-                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
-                    regiao, uf, municipio, natureza_juridica,
-                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
-                FROM {nome_tabela}_old
-            ''')
-            cursor.execute(f"DROP TABLE {nome_tabela}_old")
             cnxn.commit()
-            print("  ✓ Migracao concluida")
+
+        # Migracao automatica: detecta tabela existente sem UNIQUE correto
+        cursor.execute(f"PRAGMA table_info({nome_tabela})")
+        cols_atual = [r[1] for r in cursor.fetchall()]
+
+        if usar_agregacao and 'des_secao' in cols_atual:
+            print("⚠ Tabela destino ainda tem des_secao (versao antiga).")
+            print("  Para ativar agregacao, recrie o banco com o backup.")
+        elif not usar_agregacao and 'des_secao' not in cols_atual:
+            print("⚠ Tabela destino sem des_secao (versao nova/agregada).")
+            print("  Modo legado nao funciona com schema otimizado.")
+
+        cursor.execute(f"PRAGMA index_list({nome_tabela})")
+        indices = [r[1] for r in cursor.fetchall()]
+        tem_unique = False
+        for idx in indices:
+            try:
+                cursor.execute(f"PRAGMA index_info({idx})")
+                cols_idx = [r[2] for r in cursor.fetchall()]
+                # A UNIQUE esperada: 12 cols (agregada) ou 13 (legado)
+                esperado = 12 if usar_agregacao else 13
+                if len(cols_idx) >= esperado:
+                    tem_unique = True
+                    break
+            except Exception:
+                pass
+
+        if not tem_unique:
+            print("⚠ Tabela sem UNIQUE adequado. Re-criando do zero...")
+            cursor.execute(f"ALTER TABLE {nome_tabela} RENAME TO {nome_tabela}_old")
+            if usar_agregacao:
+                cursor.execute(f'''
+                    CREATE TABLE {nome_tabela} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ano_abertura TEXT, mes_abertura TEXT,
+                        ano_baixa TEXT, mes_baixa TEXT,
+                        regiao TEXT, uf TEXT, municipio TEXT,
+                        natureza_juridica TEXT,
+                        tipo_situacao TEXT, porte TEXT, opcao_mei TEXT,
+                        quantidade INTEGER,
+                        UNIQUE(
+                            ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                            regiao, uf, municipio, natureza_juridica,
+                            tipo_situacao, porte, opcao_mei, quantidade
+                        )
+                    )
+                ''')
+            else:
+                cursor.execute(f'''
+                    CREATE TABLE {nome_tabela} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ano_abertura TEXT, mes_abertura TEXT,
+                        ano_baixa TEXT, mes_baixa TEXT,
+                        regiao TEXT, uf TEXT, municipio TEXT,
+                        natureza_juridica TEXT, des_secao TEXT,
+                        tipo_situacao TEXT, porte TEXT, opcao_mei TEXT,
+                        quantidade INTEGER,
+                        UNIQUE(
+                            ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                            regiao, uf, municipio, natureza_juridica,
+                            des_secao, tipo_situacao, porte, opcao_mei, quantidade
+                        )
+                    )
+                ''')
+            cnxn.commit()
+            print("  ✓ Tabela re-criada (dados antigos perdidos, recomece do backup se necessario)")
 
         # Politica de limpeza
         if limpar_antes:
@@ -606,8 +809,9 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
                 print(f"  Inserting chunk {chunk_num}: {len(dados)} rows... (row {row_num})")
                 sys.stdout.flush()
 
+                tabela_destino_insert = nome_tabela_brutos if usar_agregacao else nome_tabela
                 cursor.executemany(f'''
-                    INSERT OR IGNORE INTO {nome_tabela} (
+                    INSERT OR IGNORE INTO {tabela_destino_insert} (
                         ano_abertura, mes_abertura, ano_baixa, mes_baixa,
                         regiao, uf, municipio, natureza_juridica,
                         des_secao, tipo_situacao, porte, opcao_mei, quantidade
@@ -617,7 +821,7 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
                 inseridos_no_chunk = cursor.rowcount if cursor.rowcount >= 0 else len(dados)
                 total_inserido += inseridos_no_chunk
                 total_duplicatas += (len(dados) - inseridos_no_chunk)
-                print(f"  Chunk {chunk_num}: +{inseridos_no_chunk} novos (duplicatas: {len(dados) - inseridos_no_chunk})")
+                print(f"  Chunk {chunk_num} -> {tabela_destino_insert}: +{inseridos_no_chunk} novos (duplicatas: {len(dados) - inseridos_no_chunk})")
                 sys.stdout.flush()
                 dados = []
 
@@ -627,8 +831,9 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
             print(f"  Inserting final chunk {chunk_num}: {len(dados)} rows...")
             sys.stdout.flush()
 
+            tabela_destino_insert = nome_tabela_brutos if usar_agregacao else nome_tabela
             cursor.executemany(f'''
-                INSERT OR IGNORE INTO {nome_tabela} (
+                INSERT OR IGNORE INTO {tabela_destino_insert} (
                     ano_abertura, mes_abertura, ano_baixa, mes_baixa,
                     regiao, uf, municipio, natureza_juridica,
                     des_secao, tipo_situacao, porte, opcao_mei, quantidade
@@ -642,6 +847,48 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_re
             sys.stdout.flush()
 
         wb.close()
+
+        # FASE B (agregacao): se usar_agregacao, agrupa 12 colunas + SUM(quantidade)
+        if usar_agregacao:
+            print("\n[FASE B] Agregando dados brutos por 12 colunas + SUM(quantidade)...")
+            sys.stdout.flush()
+            # Descobre ano/mes presentes na temp
+            cursor.execute(f"SELECT DISTINCT ano_abertura, mes_abertura FROM {nome_tabela_brutos}")
+            pares = cursor.fetchall()
+            print(f"  [FASE B] {len(pares)} pares (ano, mes) distintos na temp")
+            total_agregado = 0
+            for (a, m) in pares:
+                # Limpa dados do mesmo (ano, mes) ja existentes no destino (se modo reimport)
+                if anos_para_reimportar and str(a) in [str(x) for x in anos_para_reimportar]:
+                    cursor.execute(
+                        f"DELETE FROM {nome_tabela} WHERE ano_abertura=? AND mes_abertura=?",
+                        (str(a), str(m))
+                    )
+                    print(f"  [FASE B] {a}/{m}: removidos do destino para reimport")
+                elif limpar_antes and a is not None and m is not None:
+                    pass  # ja feito pelo DELETE global acima
+                # Roda a agregacao
+                cursor.execute(f'''
+                    INSERT OR IGNORE INTO {nome_tabela}
+                        (ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                         regiao, uf, municipio, natureza_juridica,
+                         tipo_situacao, porte, opcao_mei, quantidade)
+                    SELECT
+                        ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                        regiao, uf, municipio, natureza_juridica,
+                        tipo_situacao, porte, opcao_mei,
+                        SUM(quantidade) AS quantidade
+                    FROM {nome_tabela_brutos}
+                    WHERE ano_abertura = ? AND mes_abertura = ?
+                    GROUP BY
+                        ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                        regiao, uf, municipio, natureza_juridica,
+                        tipo_situacao, porte, opcao_mei
+                ''', (str(a), str(m)))
+                cnxn.commit()
+                total_agregado += cursor.rowcount
+            print(f"  [FASE B] Total agregado inserido em {nome_tabela}: {total_agregado:,}")
+            sys.stdout.flush()
 
         # Verify total
         cursor.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
