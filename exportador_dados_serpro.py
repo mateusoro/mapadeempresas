@@ -27,6 +27,17 @@ logs_folder = os.path.join(os.getcwd(), "serpro_snapshots_logs") + os.sep
 if not os.path.exists(logs_folder):
     os.makedirs(logs_folder)
     print(f"Pasta de logs criada: {logs_folder}")
+else:
+    # Limpar snapshots HTML/log antigos para não acumular
+    snaps_removidos = 0
+    for arq in os.listdir(logs_folder):
+        if arq.endswith(".html") or arq.endswith(".txt"):
+            try:
+                os.remove(os.path.join(logs_folder, arq))
+                snaps_removidos += 1
+            except Exception:
+                pass
+    print(f"Snapshots antigos removidos: {snaps_removidos}")
 
 # Configuração do Chrome
 options = webdriver.ChromeOptions()
