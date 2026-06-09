@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SERPRO - Visualizador de Dados</title>
+    <title>Mapa de Empresas</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -693,7 +693,7 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>SERPRO Data</h1>
+                <h1>Mapa de Empresas</h1>
             </div>
             <nav class="sidebar-nav">
                 <div class="nav-item active" data-page="tabela">
@@ -1364,7 +1364,7 @@
                         const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
                         const link = document.createElement('a');
                         link.href = URL.createObjectURL(blob);
-                        link.download = `serpro_dados_${new Date().toISOString().slice(0,10)}.csv`;
+                        link.download = `mapa_empresas_${new Date().toISOString().slice(0,10)}.csv`;
                         link.click();
                     }
                 });
