@@ -1012,6 +1012,65 @@ def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
     return total_importados > 0
 
 
+# Alias semantico: o usuario pediu "importar toda sc completo, todos os anos de 4 em 4"
+importar_completo_sc = baixar_todos_sc
+
+
+def importar_todos_sc_local():
+    """Importa TODOS os .xlsx ja baixados em downloads_serpro/ para o banco SQLite.
+
+    Util quando os xlsx ja foram baixados em runs anteriores e voce quer
+    apenas consolidar tudo no banco (e apagar os xlsx apos importar).
+
+    Processa do MAIS ANTIGO para o MAIS RECENTE (mtime asc) para preservar ordem.
+    """
+    arquivos = [f for f in os.listdir(download_folder)
+                if f.endswith('.xlsx') and not f.endswith('.crdownload')]
+    if not arquivos:
+        print("✗ Nenhum .xlsx encontrado em downloads_serpro/")
+        return False
+
+    # Ordena do mais antigo pro mais recente
+    arquivos.sort(key=lambda f: os.path.getmtime(os.path.join(download_folder, f)))
+
+    print("\n" + "="*70)
+    print("IMPORTAR TODOS SC LOCAL (sem novo download)")
+    print(f"  Pasta: {download_folder}")
+    print(f"  Arquivos encontrados: {len(arquivos)}")
+    print("="*70)
+
+    total_ok = 0
+    total_falha = 0
+    for i, nome in enumerate(arquivos, 1):
+        caminho = os.path.join(download_folder, nome)
+        tamanho = os.path.getsize(caminho) / 1024 / 1024
+        print(f"\n[{i}/{len(arquivos)}] {nome} ({tamanho:.2f} MB)")
+        if arquivo_eh_vazio(caminho):
+            print(f"  ⏭ Arquivo vazio, pulando.")
+            try:
+                os.remove(caminho)
+            except Exception:
+                pass
+            continue
+        if importar_excel_para_sqlite(caminho):
+            total_ok += 1
+            try:
+                os.remove(caminho)
+                print(f"  🗑 Removido: {nome}")
+            except Exception as e:
+                print(f"  ⚠ Nao foi possivel remover: {e}")
+        else:
+            total_falha += 1
+            print(f"  ⚠ xlsx MANTIDO (importacao falhou)")
+
+    print("\n" + "="*70)
+    print("RESUMO IMPORTACAO LOCAL")
+    print(f"  Importados OK: {total_ok}")
+    print(f"  Falhas:        {total_falha}")
+    print("="*70)
+    return total_ok > 0
+
+
 if __name__ == "__main__":
     import argparse
     
@@ -1020,8 +1079,13 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Exportador SERPRO")
     parser.add_argument("acao", nargs="?", default="completo",
-                        choices=["completo", "baixar", "importar", "info", "todos-sc"],
-                        help="Acoes: completo (padrao), baixar, importar, info, todos-sc")
+                        choices=["completo", "baixar", "importar", "info",
+                                 "todos-sc", "importar-completo-sc", "importar-todos-sc-local"],
+                        help=("Acoes disponiveis: "
+                              "completo (padrao), baixar, importar, info, "
+                              "todos-sc (alias), "
+                              "importar-completo-sc (baixa+importa+apaga em lotes de 4), "
+                              "importar-todos-sc-local (apenas importa xlsx ja baixados)"))
     parser.add_argument("--ano-inicio", type=int, default=None,
                         help="(todos-sc) Ano inicial do range (default: 5 anos atras)")
     parser.add_argument("--ano-fim", type=int, default=None,
@@ -1079,17 +1143,21 @@ URL base montada:
 7) Status do sistema (banco + downloads):
    python exportador_dados_serpro.py info
 
-8) PRODUCAO: baixar TODOS os anos de SC, em lotes de 4, parando quando vier vazio:
-   python exportador_dados_serpro.py todos-sc
+8) PRODUCAO COMPLETA: baixa+importa+apaga TODOS os anos de SC, em lotes de 4:
+   python exportador_dados_serpro.py importar-completo-sc
+   (mesmo que: python exportador_dados_serpro.py todos-sc)
 
-9) Producao com range customizado (ex: 2010 a 2026):
-   python exportador_dados_serpro.py todos-sc --ano-inicio 2010 --ano-fim 2026
+9) Producao completa com range customizado (ex: 2010 a 2026):
+   python exportador_dados_serpro.py importar-completo-sc --ano-inicio 2010 --ano-fim 2026
 
-10) Producao com intervalo de 5 min entre lotes (para nao sobrecarregar o SERPRO):
-    python exportador_dados_serpro.py todos-sc --intervalo 5
+10) Producao completa com 5 min entre lotes (sem sobrecarregar o SERPRO):
+    python exportador_dados_serpro.py importar-completo-sc --intervalo 5
 
-11) Producao limitada a 5 lotes (teste):
-    python exportador_dados_serpro.py todos-sc --limite-lotes 5
+11) Producao completa limitada a 2 lotes (teste):
+    python exportador_dados_serpro.py importar-completo-sc --limite-lotes 2
+
+12) Importar xlsx ja baixados (sem novo download) + apagar:
+    python exportador_dados_serpro.py importar-todos-sc-local
 ============================================================
 """)
         sys.exit(0)
@@ -1148,7 +1216,7 @@ URL base montada:
                 importar_ultimo_download()
 
     elif args.acao == "todos-sc":
-        # Modo producao: baixa todos os anos de SC em lotes de 4 ate arquivo vazio
+        # Alias: roda a funcao baixar_todos_sc
         baixar_todos_sc(
             ano_inicio=args.ano_inicio,
             ano_fim=args.ano_fim,
@@ -1156,6 +1224,20 @@ URL base montada:
             intervalo_minutos=args.intervalo,
             limite_lotes=args.limite_lotes,
         )
+
+    elif args.acao == "importar-completo-sc":
+        # Producao: baixa + importa + apaga em lotes de 4 anos
+        importar_completo_sc(
+            ano_inicio=args.ano_inicio,
+            ano_fim=args.ano_fim,
+            tamanho_lote=args.lote,
+            intervalo_minutos=args.intervalo,
+            limite_lotes=args.limite_lotes,
+        )
+
+    elif args.acao == "importar-todos-sc-local":
+        # Apenas importa os xlsx ja presentes em downloads_serpro/
+        importar_todos_sc_local()
     
     else:
         parser.print_help()
