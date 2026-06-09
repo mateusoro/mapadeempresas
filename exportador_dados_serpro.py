@@ -1012,64 +1012,108 @@ def arquivo_respeita_filtro(caminho_arquivo, ano_esperado, mes_esperado, max_lin
     Esta funcao detecta isso: le as primeiras max_linhas_amostra linhas e
     checa se todas tem ano == ano_esperado e mes == mes_esperado.
 
-    Retorna True se o filtro foi respeitado, False caso contrario.
-    Retorna True tambem se o arquivo esta vazio (sem dados = sem problema).
+    Retorna:
+        True  = filtro respeitado OU arquivo vazio (sem dados)
+        False = filtro ignorado (vai descartar o xlsx)
     """
     if not os.path.exists(caminho_arquivo):
         return True
+
+    MESES_MAP = {
+        "janeiro": 1, "fevereiro": 2, "marco": 3, "março": 3, "abril": 4,
+        "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
+        "outubro": 10, "novembro": 11, "dezembro": 12
+    }
+
+    def normaliza_mes(valor):
+        """Converte valor de mes (1-12, 'Janeiro', etc) para int 1-12."""
+        if valor is None:
+            return None
+        s = str(valor).strip().lower()
+        if not s:
+            return None
+        # Tenta como int direto (ex: "1", "12")
+        try:
+            n = int(s)
+            if 1 <= n <= 12:
+                return n
+        except (ValueError, TypeError):
+            pass
+        # Tenta como nome do mes
+        if s in MESES_MAP:
+            return MESES_MAP[s]
+        # Tenta match parcial (ex: "Marco" -> "marco")
+        for nome, num in MESES_MAP.items():
+            if nome in s or s in nome:
+                return num
+        return None
+
     try:
         wb = load_workbook(filename=caminho_arquivo, read_only=True, data_only=True)
         ws = wb.active
+
         # Le cabecalho para descobrir indices das colunas
         header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         if not header_row:
             wb.close()
-            return True  # sem header = vazio, considera OK
-        # Encontra indices
+            return True  # sem header = vazio
+
+        # Encontra indices: coluna que tem "ano" + "abertura" e "mes" + "abertura"
         idx_ano = None
         idx_mes = None
         for i, h in enumerate(header_row):
             if h is None:
                 continue
-            h_low = str(h).strip().lower()
-            if "ano" in h_low and "abert" in h_low:
+            h_norm = str(h).strip().lower()
+            # Remove acentos para comparacao
+            h_norm = (h_norm.replace("ã", "a").replace("á", "a")
+                          .replace("é", "e").replace("ê", "e").replace("í", "i")
+                          .replace("ó", "o").replace("ô", "o").replace("ú", "u")
+                          .replace("ç", "c"))
+            if "ano" in h_norm and "abert" in h_norm and idx_ano is None:
                 idx_ano = i
-            elif "m" in h_low and ("s" in h_low or "abert" in h_low):
+            elif "mes" in h_norm and "abert" in h_norm and idx_mes is None:
                 idx_mes = i
+
         if idx_ano is None or idx_mes is None:
             wb.close()
-            return True  # nao conseguiu mapear, aceita
+            # Nao conseguiu mapear colunas - aceita (mas loga)
+            return True
+
         # Conta quantas linhas tem o filtro correto
         total = 0
         corretas = 0
+        anos_vistos = set()
+        meses_vistos = set()
         for row in ws.iter_rows(min_row=2, max_row=max_linhas_amostra + 1, values_only=True):
-            if not row or row[idx_ano] is None:
+            if not row or idx_ano >= len(row) or row[idx_ano] is None:
                 continue
             total += 1
             try:
                 a = int(str(row[idx_ano]).strip())
-                m_str = str(row[idx_mes]).strip() if row[idx_mes] is not None else ""
-                m_map = {
-                    "janeiro": 1, "fevereiro": 2, "marco": 3, "março": 3, "abril": 4,
-                    "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
-                    "outubro": 10, "novembro": 11, "dezembro": 12
-                }
-                m = m_map.get(m_str.lower(), None)
-                if m is None:
-                    # tenta parsear como int
-                    try:
-                        m = int(m_str)
-                    except (ValueError, TypeError):
-                        continue
-                if a == ano_esperado and m == mes_esperado:
-                    corretas += 1
             except (ValueError, TypeError):
                 continue
+            m = None
+            if idx_mes < len(row):
+                m = normaliza_mes(row[idx_mes])
+            anos_vistos.add(a)
+            if m is not None:
+                meses_vistos.add(m)
+            if a == ano_esperado and m == mes_esperado:
+                corretas += 1
         wb.close()
+
         if total == 0:
             return True  # vazio
-        # Se >= 80% das linhas tem o filtro correto, aceita
-        return (corretas / total) >= 0.8
+
+        # Se >= 95% das linhas tem o filtro correto, aceita
+        aceita = (corretas / total) >= 0.95
+        if not aceita:
+            print(f"  📊 Amostra: {corretas}/{total} corretas")
+            print(f"     Anos vistos: {sorted(anos_vistos)[:10]}{'...' if len(anos_vistos)>10 else ''}")
+            print(f"     Meses vistos: {sorted(meses_vistos)}")
+            print(f"     Esperado: ano={ano_esperado}, mes={mes_esperado}")
+        return aceita
     except Exception as e:
         print(f"  ⚠ Erro ao verificar filtro: {e}")
         return True  # em caso de erro, aceita (nao bloqueia)
