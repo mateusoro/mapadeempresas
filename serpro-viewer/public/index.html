@@ -720,11 +720,11 @@
                     <p>Dados das empresas abertas no Brasil</p>
                 </div>
 
-                <!-- Stats Cards -->
+                <!-- Stats Cards (reativos aos filtros da tabela) -->
                 <div class="stats-grid" id="statsGrid">
                     <div class="stat-card">
                         <div class="stat-card-header">
-                            <span class="stat-card-label">Total de Empresas</span>
+                            <span class="stat-card-label">Total de Empresas Ativas</span>
                             <div class="stat-card-icon blue">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -733,11 +733,25 @@
                                 </svg>
                             </div>
                         </div>
-                        <div class="stat-card-value" id="totalEmpresas">-</div>
+                        <div class="stat-card-value" id="totalEmpresasAtivas">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-header">
-                            <span class="stat-card-label">Regiões</span>
+                            <span class="stat-card-label">Total de Empresas Baixadas</span>
+                            <div class="stat-card-icon red">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="8.5" cy="7" r="4"/>
+                                    <line x1="18" y1="8" x2="23" y2="13"/>
+                                    <line x1="23" y1="8" x2="18" y2="13"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-card-value" id="totalEmpresasBaixadas">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-label">Total de MEIs Ativos</span>
                             <div class="stat-card-icon green">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
@@ -745,24 +759,12 @@
                                 </svg>
                             </div>
                         </div>
-                        <div class="stat-card-value" id="totalRegioes">-</div>
+                        <div class="stat-card-value" id="totalMeisAtivos">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-header">
-                            <span class="stat-card-label">UF's</span>
+                            <span class="stat-card-label">Total de MEIs Baixados</span>
                             <div class="stat-card-icon orange">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-                                    <line x1="4" y1="22" x2="4" y2="15"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="stat-card-value" id="totalUFs">-</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-card-header">
-                            <span class="stat-card-label">Anos de Abertura</span>
-                            <div class="stat-card-icon purple">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                                     <line x1="16" y1="2" x2="16" y2="6"/>
@@ -771,7 +773,7 @@
                                 </svg>
                             </div>
                         </div>
-                        <div class="stat-card-value" id="totalAnos">-</div>
+                        <div class="stat-card-value" id="totalMeisBaixados">-</div>
                     </div>
                 </div>
 
@@ -863,7 +865,6 @@
         // Inicialização
         document.addEventListener('DOMContentLoaded', async () => {
             loadColumns();
-            loadStats();
             loadData();
             await loadExternalPages();
 
@@ -1151,21 +1152,34 @@
             loadData();
         }
 
-        // Carregar estatísticas
+        // Carregar estatísticas (cards resumo: Ativas, Baixadas, MEIs)
+        // Sempre passa os mesmos filtros da tabela (escopo global `filters`).
         async function loadStats() {
+            const ids = ['totalEmpresasAtivas', 'totalEmpresasBaixadas', 'totalMeisAtivos', 'totalMeisBaixados'];
+            // Marcar como carregando
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '...';
+            });
             try {
-                const response = await fetch('/api/estatisticas');
+                const params = new URLSearchParams({
+                    filters: JSON.stringify(filters || {})
+                });
+                const response = await fetch(`/api/stats-resumo?${params}`);
                 const result = await response.json();
-                
                 if (result.success) {
-                    const data = result.data;
-                    document.getElementById('totalEmpresas').textContent = formatNumber(data.totalEmpresas);
-                    document.getElementById('totalRegioes').textContent = data.porRegiao.length;
-                    document.getElementById('totalUFs').textContent = data.porUF.length;
-                    document.getElementById('totalAnos').textContent = data.porAno.length;
+                    const d = result.data;
+                    document.getElementById('totalEmpresasAtivas').textContent = formatNumber(d.ativas);
+                    document.getElementById('totalEmpresasBaixadas').textContent = formatNumber(d.baixadas);
+                    document.getElementById('totalMeisAtivos').textContent = formatNumber(d.meiAtivas);
+                    document.getElementById('totalMeisBaixados').textContent = formatNumber(d.meiBaixadas);
                 }
             } catch (err) {
                 console.error('Erro ao carregar estatísticas:', err);
+                ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = 'erro';
+                });
             }
         }
 
@@ -1334,8 +1348,10 @@
         }
 
 
-        // Carregar dados
+        // Carregar dados + atualizar cards resumo (stats) em paralelo
         async function loadData() {
+            // Stats em paralelo (nao bloqueia render da tabela)
+            loadStats();
             try {
                 const params = new URLSearchParams({
                     page: currentPage,
@@ -1347,12 +1363,12 @@
 
                 const response = await fetch(`/api/dados?${params}`);
                 const result = await response.json();
-                
+
                 if (result.success) {
                     allData = result.data;
                     totalRecords = result.pagination.total;
                     totalPages = result.pagination.totalPages;
-                    
+
                     renderTable();
                     renderPagination();
                 }

@@ -52,35 +52,34 @@ function parseIntParam(value, defaultValue) {
 }
 
 function parseFilters(filtersJson) {
-    if (!filtersJson) return { where: '1=1', params: [] };
+    // Devolve { whereClause, params } onde whereClause ja vem com 'WHERE ' (ou '' se vazio).
+    if (!filtersJson) return { whereClause: '', params: [] };
     let filters;
     try {
         filters = JSON.parse(filtersJson);
     } catch (e) {
-        return { where: '1=1', params: [] };
+        return { whereClause: '', params: [] };
     }
     const conditions = [];
-    const params = {};
+    const params = [];
     for (const [key, value] of Object.entries(filters)) {
         if (!COLUNAS_FILTRAVEIS.has(key)) continue;
         if (value === null || value === undefined || value === '') continue;
         const strValue = String(value);
-        // Filtro checkbox: valores separados por | -> IN (...)
         if (strValue.includes('|')) {
             const values = strValue.split('|').map(v => v.trim()).filter(Boolean);
             if (values.length > 0) {
                 const placeholders = values.map(() => '?').join(',');
                 conditions.push(`${key} IN (${placeholders})`);
-                values.forEach(v => params[Object.keys(params).length] = v);
+                values.forEach(v => params.push(v));
             }
         } else {
-            // Filtro texto: LIKE
             conditions.push(`${key} LIKE ?`);
-            params[Object.keys(params).length] = `%${strValue}%`;
+            params.push(`%${strValue}%`);
         }
     }
-    const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
-    return { where, params: Object.values(params) };
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    return { whereClause, params };
 }
 
 function buildOrderBy(sortBy, sortOrder) {
@@ -115,15 +114,15 @@ app.get('/api/dados', (req, res) => {
         const sortBy = req.query.sortBy || 'id';
         const sortOrder = req.query.sortOrder || 'ASC';
 
-        const { where, params } = parseFilters(req.query.filters);
+        const { whereClause, params } = parseFilters(req.query.filters);
         const orderBy = buildOrderBy(sortBy, sortOrder);
 
         // COUNT(*) no SQLite em 21M registros é rápido (índice/id scan)
-        const total = db.prepare(`SELECT COUNT(*) as c FROM dados_serpro WHERE ${where}`).get(...params).c;
+        const total = db.prepare(`SELECT COUNT(*) as c FROM dados_serpro ${whereClause}`).get(...params).c;
 
         const dados = db.prepare(`
             SELECT * FROM dados_serpro
-            WHERE ${where}
+            ${whereClause}
             ${orderBy}
             LIMIT ? OFFSET ?
         `).all(...params, limit, offset);
@@ -150,6 +149,57 @@ app.get('/api/dados', (req, res) => {
 // Em 21M registros, GROUP BY no SQLite sem índices dedicados leva >90s e
 // estoura timeout. Para stats pesados, crie uma tabela pré-agregada ou
 // use ferramentas de BI externas. Mantemos só listagem paginada + schema.
+
+// Resumo rapido: 4 valores (Ativas, Baixadas, MEI Ativas, MEI Baixadas)
+// Acompanha os mesmos filtros de /api/dados. Query agregada (1 SQL) +
+// cache em memoria com TTL de 5 min para nao estourar a UI em filtros
+// repetidos (a query no OneDrive leva 1-5s).
+const STATS_CACHE = new Map(); // key: filtersJson -> { data, ts }
+const STATS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+app.get('/api/stats-resumo', (req, res) => {
+    try {
+        const filtersJson = req.query.filters || '{}';
+        const cached = STATS_CACHE.get(filtersJson);
+        if (cached && Date.now() - cached.ts < STATS_CACHE_TTL_MS) {
+            return res.json({ success: true, data: cached.data, cached: true });
+        }
+
+        const { whereClause, params } = parseFilters(filtersJson);
+
+        // Uma unica query com CASE WHEN: 4 SUM em 1 scan so (3x mais rapido que 4).
+        const t0 = Date.now();
+        const row = db.prepare(`
+            SELECT
+                COALESCE(SUM(CASE WHEN tipo_situacao='Ativa'   THEN quantidade ELSE 0 END), 0) as ativas,
+                COALESCE(SUM(CASE WHEN tipo_situacao='Baixada' THEN quantidade ELSE 0 END), 0) as baixadas,
+                COALESCE(SUM(CASE WHEN tipo_situacao='Ativa'   AND opcao_mei='S' THEN quantidade ELSE 0 END), 0) as meiAtivas,
+                COALESCE(SUM(CASE WHEN tipo_situacao='Baixada' AND opcao_mei='S' THEN quantidade ELSE 0 END), 0) as meiBaixadas
+            FROM dados_serpro
+            ${whereClause}
+        `).get(...params);
+        const t1 = Date.now();
+
+        const data = {
+            ativas: row.ativas,
+            baixadas: row.baixadas,
+            meiAtivas: row.meiAtivas,
+            meiBaixadas: row.meiBaixadas
+        };
+
+        STATS_CACHE.set(filtersJson, { data, ts: Date.now() });
+
+        res.json({
+            success: true,
+            data,
+            query_ms: t1 - t0,
+            cached: false
+        });
+    } catch (err) {
+        console.error('[ERRO] /api/stats-resumo:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // Schema da tabela
 app.get('/api/colunas', (req, res) => {
