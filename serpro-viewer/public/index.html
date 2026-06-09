@@ -148,47 +148,61 @@
             font-size: 14px;
         }
 
-        /* Cards de Stats */
+        /* Cards de Stats: 4 colunas iguais (1 linha) dividindo a tela */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
             margin-bottom: 24px;
         }
 
         .stat-card {
             background: var(--surface);
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 14px 16px;
             border: 1px solid var(--border);
+            min-width: 0;
         }
 
         .stat-card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .stat-card-label {
-            font-size: 13px;
+            font-size: 12px;
             color: var(--text-secondary);
             font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .stat-card-value {
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 700;
             color: var(--text);
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .stat-card-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .stat-card-icon svg {
+            width: 16px;
+            height: 16px;
         }
 
         .stat-card-icon.blue { background: #dbeafe; color: var(--primary); }
@@ -630,6 +644,10 @@
                 margin-left: 0;
             }
 
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
             .table-header {
                 flex-direction: column;
                 align-items: stretch;
@@ -703,65 +721,62 @@
                 </div>
 
                 <!-- Stats Cards -->
-                <div class="stats-grid" id="statsGrid"></div>
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-label">Total de Empresas</span>
+                            <div class="stat-card-icon blue">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-card-value" id="totalEmpresas">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-label">Regiões</span>
+                            <div class="stat-card-icon green">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                    <circle cx="12" cy="10" r="3"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-card-value" id="totalRegioes">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-label">UF's</span>
+                            <div class="stat-card-icon orange">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                    <line x1="4" y1="22" x2="4" y2="15"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-card-value" id="totalUFs">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-label">Anos de Abertura</span>
+                            <div class="stat-card-icon purple">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                    <line x1="16" y1="2" x2="16" y2="6"/>
+                                    <line x1="8" y1="2" x2="8" y2="6"/>
+                                    <line x1="3" y1="10" x2="21" y2="10"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-card-value" id="totalAnos">-</div>
+                    </div>
+                </div>
 
                 <!-- Tabela -->
                 <div class="table-container">
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <span class="stat-card-label">Total de Empresas</span>
-                        <div class="stat-card-icon blue">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                                <circle cx="9" cy="7" r="4"/>
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="stat-card-value" id="totalEmpresas">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <span class="stat-card-label">Regiões</span>
-                        <div class="stat-card-icon green">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                                <circle cx="12" cy="10" r="3"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="stat-card-value" id="totalRegioes">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <span class="stat-card-label">UF's</span>
-                        <div class="stat-card-icon orange">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-                                <line x1="4" y1="22" x2="4" y2="15"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="stat-card-value" id="totalUFs">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <span class="stat-card-label">Anos de Abertura</span>
-                        <div class="stat-card-icon purple">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                                <line x1="16" y1="2" x2="16" y2="6"/>
-                                <line x1="8" y1="2" x2="8" y2="6"/>
-                                <line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="stat-card-value" id="totalAnos">-</div>
-                </div>
-            </div>
-
-            <!-- Tabela -->
-            <div class="table-container">
                 <div class="table-header">
                     <span class="table-title">Empresas</span>
                     <div class="table-actions">
