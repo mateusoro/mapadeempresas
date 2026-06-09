@@ -15,6 +15,7 @@ Um índice de cobertura inclui a coluna de filtro e a coluna de dados (`quantida
 | `idx_ano_mes_abertura_qty` | `(ano_abertura, mes_abertura, quantidade)` | Aberturas anuais e mensais | ~21s |
 | `idx_ano_baixa_qty` | `(ano_baixa, quantidade)` | Aberturas vs Baixas (Mortalidade) | ~21s |
 | `idx_uf_municipio_qty` | `(uf, municipio, quantidade)` | Rankings por UF e Rankings Municipais | ~38s |
+| `idx_uf_ano_opcao_mei_municipio_qty` | `(uf, ano_abertura, opcao_mei, municipio, quantidade)` | Consultas combinando Estado + Ano + Opção MEI (como Rankings por ano e município) | ~77s |
 | `idx_municipio_qty` | `(municipio, quantidade)` | Consultas isoladas de Municípios | ~38s |
 | `idx_regiao_qty` | `(regiao, quantidade)` | Distribuição regional | ~26s |
 | `idx_porte_qty` | `(porte, quantidade)` | Análise de perfil por porte de empresa | ~24s |
@@ -58,6 +59,7 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_ano_mes_abertura_qty ON dados_serpro(ano_abertura, mes_abertura, quantidade);
     CREATE INDEX IF NOT EXISTS idx_ano_baixa_qty ON dados_serpro(ano_baixa, quantidade);
     CREATE INDEX IF NOT EXISTS idx_uf_municipio_qty ON dados_serpro(uf, municipio, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_uf_ano_opcao_mei_municipio_qty ON dados_serpro(uf, ano_abertura, opcao_mei, municipio, quantidade);
     CREATE INDEX IF NOT EXISTS idx_municipio_qty ON dados_serpro(municipio, quantidade);
     CREATE INDEX IF NOT EXISTS idx_regiao_qty ON dados_serpro(regiao, quantidade);
     CREATE INDEX IF NOT EXISTS idx_porte_qty ON dados_serpro(porte, quantidade);
