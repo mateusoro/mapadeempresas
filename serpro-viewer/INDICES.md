@@ -1,63 +1,70 @@
 # Índices do banco `base_dados.db`
 
-Banco: ~5.5 GB, ~21M registros. Servido por `server-mapa-empresas.js`.
+Banco: ~8.97 GB (pós-otimização), ~21M registros. Servido por `server-mapa-empresas.js`.
 
-## idx_mei_situacao_uf
+Para garantir que a inteligência artificial (ChatGPT / Custom GPT Actions) consiga realizar qualquer análise sobre a base de dados de 21M de registros sem estourar o limite de tempo (timeout de 100s do Cloudflare), foram criados os seguintes **índices de cobertura (covering indexes)**.
 
-```sql
-CREATE INDEX idx_mei_situacao_uf ON dados_serpro(opcao_mei, tipo_situacao, uf);
-```
+Um índice de cobertura inclui a coluna de filtro e a coluna de dados (`quantidade`), permitindo que o SQLite execute `SUM(quantidade)` diretamente a partir do índice na memória, sem nunca ler a tabela principal no disco lento do WSL.
 
-- Criado em: 2026-06-09
-- Tempo de criação: 70.8s
-- Tamanho adicionado: ~220 MB
-- Banco: 4.57 GB → 4.91 GB
+## Lista de Índices de Cobertura Criados
 
-### Speedup medido
+| Nome do Índice | Colunas Indexadas | Finalidade / Queries Beneficiadas | Tempo de Criação |
+|---|---|---|---|
+| `idx_tipo_situacao_qty` | `(tipo_situacao, quantidade)` | Total de baixas (`WHERE tipo_situacao='Baixada'`) | ~22s |
+| `idx_opcao_mei_qty` | `(opcao_mei, quantidade)` | Total de MEIs / não-MEIs | ~23s |
+| `idx_ano_mes_abertura_qty` | `(ano_abertura, mes_abertura, quantidade)` | Aberturas anuais e mensais | ~21s |
+| `idx_ano_baixa_qty` | `(ano_baixa, quantidade)` | Aberturas vs Baixas (Mortalidade) | ~21s |
+| `idx_uf_municipio_qty` | `(uf, municipio, quantidade)` | Rankings por UF e Rankings Municipais | ~38s |
+| `idx_municipio_qty` | `(municipio, quantidade)` | Consultas isoladas de Municípios | ~38s |
+| `idx_regiao_qty` | `(regiao, quantidade)` | Distribuição regional | ~26s |
+| `idx_porte_qty` | `(porte, quantidade)` | Análise de perfil por porte de empresa | ~24s |
+| `idx_natureza_juridica_qty`| `(natureza_juridica, quantidade)` | Análise de perfil por natureza jurídica | ~26s |
 
-| Query | Antes | Depois | Speedup |
+---
+
+## Resultados Práticos (Speedup Medido)
+
+Abaixo, veja o tempo de execução no mesmo arquivo de banco no Windows antes e depois da criação dos índices de cobertura:
+
+| Query de Teste | Sem Índices (Full Table Scan) | Com Índices (Covering Scan) | Ganho de Velocidade |
 |---|---:|---:|---:|
-| `COUNT(*)` com `opcao_mei='S' AND tipo_situacao='Ativa'` | 3.01s | 36ms | **83×** |
-| `SUM(quantidade)` mesmo filtro | 3.03s | 710ms | 4.3× |
-| `GROUP BY uf` mesmo filtro | 3.31s | 671ms | 4.9× |
+| `SUM(quantidade)` filtrando por `municipio` (Pinhalzinho - SC) | 5.16s | **37ms** | **139× mais rápido** |
+| `SUM(quantidade)` filtrando por `tipo_situacao='Baixada'` | 13.77s | **894ms** | **15.4× mais rápido** |
+| `SUM(quantidade)` filtrando por `ano_abertura=2026` | ~3.10s | **9ms** | **344× mais rápido** |
+| `SUM(quantidade)` filtrando por `opcao_mei='S'` | ~3.05s | **336ms** | **9× mais rápido** |
 
-## idx_situacao_mei
+---
 
-```sql
-CREATE INDEX idx_situacao_mei ON dados_serpro(tipo_situacao, opcao_mei);
-```
+## Como recriar (se o banco de dados for regenerado do zero)
 
-- Criado em: 2026-06-09
-- Tempo de criação: 14.9s
-- Tamanho adicionado: ~385 MB
-- Banco: 5.15 GB → 5.53 GB
-- **Requer `ANALYZE`** após criação para o query planner usar (rode automaticamente na primeira conexão read-write)
+Se você rodar o importador python e regenerar o arquivo `base_dados.db`, você **deve** recriar estes índices para que o GPT não volte a sofrer com timeouts. 
 
-### Speedup medido (após ANALYZE)
-
-| Query | Antes (scan) | Depois | Plano |
-|---|---:|---:|---|
-| `COUNT(*)` com `tipo_situacao='Ativa'` | 1.71s | **125ms** | idx_situacao_mei (13×) |
-| `SUM(quantidade)` mesmo filtro | 1.55s | 1.7s | idx_situacao_mei (mantém) |
-| `SUM(quantidade)` `tipo_situacao='Ativa' AND opcao_mei='S'` | timeout | 616ms | idx_situacao_mei |
-
-## Como recriar (se o banco for regenerado)
+Para recriar tudo automaticamente, você pode executar o seguinte script Node.js na sua máquina:
 
 ```javascript
 const Database = require('better-sqlite3');
-const db = new Database('../base_dados.db', { readonly: false });
-db.exec('CREATE INDEX IF NOT EXISTS idx_mei_situacao_uf ON dados_serpro(opcao_mei, tipo_situacao, uf)');
-db.exec('CREATE INDEX IF NOT EXISTS idx_situacao_mei  ON dados_serpro(tipo_situacao, opcao_mei)');
-db.exec('ANALYZE'); // crucial para o query planner usar os indices
+const path = require('path');
+
+const dbPath = path.join(__dirname, '..', 'base_dados.db');
+const db = new Database(dbPath, { readonly: false });
+
+console.log('Criando índices de cobertura...');
+db.pragma('cache_size = -2000000'); // Cache de 2GB para acelerar build
+db.pragma('temp_store = MEMORY');
+
+db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tipo_situacao_qty ON dados_serpro(tipo_situacao, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_opcao_mei_qty ON dados_serpro(opcao_mei, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_ano_mes_abertura_qty ON dados_serpro(ano_abertura, mes_abertura, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_ano_baixa_qty ON dados_serpro(ano_baixa, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_uf_municipio_qty ON dados_serpro(uf, municipio, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_municipio_qty ON dados_serpro(municipio, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_regiao_qty ON dados_serpro(regiao, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_porte_qty ON dados_serpro(porte, quantidade);
+    CREATE INDEX IF NOT EXISTS idx_natureza_juridica_qty ON dados_serpro(natureza_juridica, quantidade);
+    ANALYZE;
+`);
+
+console.log('Pronto! Índices criados e ANALYZE executado.');
 db.close();
 ```
-
-## Cache de stats (server)
-
-Endpoint `/api/stats-resumo` faz cache em memória (TTL 5 min) por filtro. Para 21M registros no OneDrive, a query agregada com CASE WHEN leva 1.7-5.4s na primeira chamada, depois 2-3ms (cache hit).
-
-## Nota
-
-- O banco é read-only quando servido pelo `server-mapa-empresas.js`
-- Para criar índices/rodar ANALYZE: parar o server, abrir DB em read-write, criar, ANALYZE, fechar, reiniciar
-- Cada novo mês importado pelo `exportador_dados_serpro.py` adiciona ~150k registros; índices continuam válidos
