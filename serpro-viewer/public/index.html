@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SERPRO - Visualizador de Dados</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #64748b;
+            --background: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* Layout Principal */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-header h1::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+        }
+
+        .nav-item:hover {
+            background: var(--background);
+            color: var(--text);
+        }
+
+        .nav-item.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .nav-item span {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            padding: 0 16px;
+            margin-bottom: 8px;
+        }
+
+        /* Conteúdo Principal */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 24px;
+        }
+
+        /* Header */
+        .page-header {
+            margin-bottom: 24px;
+        }
+
+        .page-header h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Cards de Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .stat-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .stat-card-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .stat-card-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .stat-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stat-card-icon.blue { background: #dbeafe; color: var(--primary); }
+        .stat-card-icon.green { background: #d1fae5; color: var(--success); }
+        .stat-card-icon.orange { background: #fef3c7; color: var(--warning); }
+        .stat-card-icon.purple { background: #ede9fe; color: #7c3aed; }
+        .stat-card-icon.red { background: #fee2e2; color: #dc2626; }
+
+        /* MEI Filters */
+        .mei-filters {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding: 20px;
+            background: var(--surface);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 160px;
+            background: var(--surface);
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* Tabela Container */
+        .table-container {
+            background: var(--surface);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .table-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .table-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-box input {
+            padding: 8px 12px 8px 36px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            width: 250px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--primary);
+        }
+
+        .search-box svg {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: var(--text-secondary);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--background);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        /* Tabela */
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: var(--background);
+        }
+
+        th {
+            padding: 0;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+            position: relative;
+            cursor: pointer;
+            user-select: none;
+            background: var(--background);
+        }
+
+        .th-content {
+            padding: 0;
+        }
+
+        .th-header {
+            padding: 10px 12px 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        th:hover .th-header {
+            background: #dde3ea;
+        }
+
+        .th-filter {
+            padding: 0 8px 8px 8px;
+        }
+
+        th .sort-icon {
+            margin-left: 4px;
+            opacity: 0.4;
+        }
+
+        th.sorted .sort-icon {
+            opacity: 1;
+            color: var(--primary);
+        }
+
+        th.sorted.desc .sort-icon {
+            transform: rotate(180deg);
+        }
+
+        td {
+            padding: 12px 16px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover {
+            background: var(--background);
+        }
+
+        .filter-input {
+            width: 100%;
+            padding: 5px 8px;
+            border: 1px solid #c8d1d9;
+            border-radius: 4px;
+            font-size: 11px;
+            outline: none;
+            background: white;
+        }
+
+        .filter-input:focus {
+            border-color: var(--primary);
+            background: #fff;
+        }
+
+        .filter-input::placeholder {
+            color: #a0aec0;
+        }
+
+        /* Checkbox Filter Styles */
+        .checkbox-filter {
+            position: relative;
+        }
+
+        .checkbox-filter-header {
+            cursor: pointer;
+        }
+
+        .checkbox-filter-toggle {
+            font-size: 11px;
+            color: var(--primary);
+            text-decoration: underline;
+            font-weight: 400;
+            text-transform: none;
+        }
+
+        .checkbox-filter-count {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+
+        .checkbox-filter-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 200px;
+            max-height: 300px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checkbox-filter-search {
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .checkbox-filter-search input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .checkbox-filter-items {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 200px;
+            padding: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+
+        .checkbox-item:hover {
+            background: var(--background);
+        }
+
+        .checkbox-item input {
+            cursor: pointer;
+        }
+
+        .checkbox-item span:first-of-type {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .checkbox-count {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        .checkbox-filter-actions {
+            padding: 8px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .checkbox-filter-actions button {
+            padding: 4px 12px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .checkbox-filter-actions button:hover {
+            background: var(--background);
+        }
+
+        .checkbox-filter-actions button:last-child {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Paginação */
+        .pagination {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .pagination-info {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .pagination-btn {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--background);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-ativa { background: #d1fae5; color: #065f46; }
+        .badge-inativa { background: #fee2e2; color: #991b1b; }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .table-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .search-box input {
+                width: 100%;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Menu Toggle Mobile */
+        .menu-toggle {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            cursor: pointer;
+            z-index: 101;
+        }
+
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>SERPRO Data</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-item active" data-page="tabela">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 10h18M3 14h18M3 6h18M3 18h18"/>
+                    </svg>
+                    <span>Tabela de Dados</span>
+                </div>
+                <div class="nav-item" data-page="estatisticas">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 20V10M12 20V4M6 20v-6"/>
+                    </svg>
+                    <span>Estatísticas</span>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Página: Tabela de Dados -->
+            <div id="page-tabela" class="page-section">
+                <div class="page-header">
+                    <h2>Tabela de Dados</h2>
+                    <p>Dados das empresas abertas no Brasil</p>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid" id="statsGrid"></div>
+
+                <!-- Tabela -->
+                <div class="table-container">
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-card-label">Total de Empresas</span>
+                        <div class="stat-card-icon blue">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-card-value" id="totalEmpresas">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-card-label">Regiões</span>
+                        <div class="stat-card-icon green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-card-value" id="totalRegioes">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-card-label">UF's</span>
+                        <div class="stat-card-icon orange">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                <line x1="4" y1="22" x2="4" y2="15"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-card-value" id="totalUFs">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-card-label">Anos de Abertura</span>
+                        <div class="stat-card-icon purple">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-card-value" id="totalAnos">-</div>
+                </div>
+            </div>
+
+            <!-- Tabela -->
+            <div class="table-container">
+                <div class="table-header">
+                    <span class="table-title">Empresas</span>
+                    <div class="table-actions">
+                        <div class="search-box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            <input type="text" id="globalSearch" placeholder="Buscar em todos os campos...">
+                        </div>
+                        <button class="btn btn-secondary" onclick="limparFiltros()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18M3 12h18M3 18h18"/>
+                            </svg>
+                            Limpar Filtros
+                        </button>
+                        <button class="btn btn-primary" onclick="exportarCSV()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                            </svg>
+                            Exportar CSV
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="dataTable">
+                        <thead>
+                            <tr id="tableHeader">
+                                <th data-column="id" data-sortable="true">
+                                    ID
+                                    <span class="sort-icon">▲</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr>
+                                <td colspan="14">
+                                    <div class="loading">
+                                        <div class="spinner"></div>
+                                        Carregando dados...
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <div class="pagination-info" id="paginationInfo">
+                        Mostrando 0 de 0 registros
+                    </div>
+                    <div class="pagination-controls" id="paginationControls">
+                        <!-- Botões de paginação -->
+                    </div>
+                </div>
+            </div>
+</div>
+
+            <!-- Página: Estatísticas MEI -->
+            <!-- Página: Estatísticas MEI (carregado via external) -->
+            <div id="page-estatisticas-placeholder" data-page="estatisticas"></div>
+        </main>
+    </div>
+
+    <button class="menu-toggle" id="menuToggle">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+    </button>
+
+    <script>
+        // Estado global
+        let currentPage = 1;
+        let totalPages = 1;
+        let totalRecords = 0;
+        let sortBy = 'id';
+        let sortOrder = 'ASC';
+        let filters = {};
+        let tableColumns = [];
+        let allData = [];
+        let currentPageName = 'tabela';
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadColumns();
+            loadStats();
+            loadData();
+            await loadExternalPages();
+
+            // Event listeners
+            document.getElementById('globalSearch').addEventListener('input', debounce(handleGlobalSearch, 300));
+
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const page = item.dataset.page;
+                    navigateToPage(page);
+                });
+            });
+
+            document.getElementById('menuToggle').addEventListener('click', () => {
+                document.getElementById('sidebar').classList.toggle('open');
+            });
+        });
+
+        // Carregar páginas externas
+        async function loadExternalPages() {
+            try {
+                const response = await fetch('/estatisticas-mei.html');
+                const html = await response.text();
+                const placeholder = document.getElementById('page-estatisticas-placeholder');
+                if (placeholder) {
+                    placeholder.outerHTML = html;
+                    // Após carregar, executar loadEstatisticasPage
+                    loadEstatisticasPage();
+                }
+            } catch (err) {
+                console.error('Erro ao carregar páginas externas:', err);
+            }
+        }
+
+        // Navegação entre páginas
+        function navigateToPage(pageName) {
+            // Esconder todas as páginas
+            document.querySelectorAll('.page-section').forEach(page => {
+                page.style.display = 'none';
+            });
+
+            // Remover active de todos os nav-items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Mostrar página selecionada
+            const pageEl = document.getElementById('page-' + pageName);
+            if (pageEl) {
+                pageEl.style.display = 'block';
+            }
+
+            // Marcar nav-item como active
+            const navItem = document.querySelector(`.nav-item[data-page="${pageName}"]`);
+            if (navItem) {
+                navItem.classList.add('active');
+            }
+
+            currentPageName = pageName;
+
+            // Carregar dados específicos da página
+            if (pageName === 'estatisticas') {
+                loadEstatisticasPage();
+            }
+        }
+
+        // Carregar colunas
+        async function loadColumns() {
+            try {
+                const response = await fetch('/api/colunas');
+                const result = await response.json();
+                
+                if (result.success) {
+                    tableColumns = result.data.filter(col => col.name !== 'id' && col.name !== 'des_secao');
+                    renderTableHeader();
+                }
+            } catch (err) {
+                console.error('Erro ao carregar colunas:', err);
+            }
+        }
+
+        // Renderizar header da tabela
+        function renderTableHeader() {
+            const header = document.getElementById('tableHeader');
+            header.innerHTML = tableColumns.map(col => {
+                const colName = col.name;
+                const displayName = colName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const isSorted = sortBy === colName;
+                const filterValue = filters[colName] || '';
+
+                // Colunas com texto (não checkbox)
+                const textColumns = ['ano_abertura', 'ano_baixa', 'municipio'];
+
+                if (!textColumns.includes(colName)) {
+                    // Colunas com checkbox multi-select
+                    return `
+                        <th data-column="${colName}" data-sortable="true" class="${isSorted ? 'sorted ' + sortOrder.toLowerCase() : ''}">
+                            <div class="th-content">
+                                <div class="th-header" onclick="handleSort('${colName}')">
+                                    ${displayName}
+                                    <span class="sort-icon">▲</span>
+                                </div>
+                                <div class="th-filter">
+                                    <div class="checkbox-filter" data-filter-column="${colName}">
+                                        <div class="checkbox-filter-header">
+                                            <span class="checkbox-filter-toggle" onclick="toggleCheckboxFilter(this)">Selecionar...</span>
+                                            <span class="checkbox-filter-count"></span>
+                                        </div>
+                                        <div class="checkbox-filter-list" style="display:none;">
+                                            <div class="checkbox-filter-search">
+                                                <input type="text" placeholder="Buscar..." onkeyup="filterCheckboxList(this)">
+                                            </div>
+                                            <div class="checkbox-filter-items"></div>
+                                            <div class="checkbox-filter-actions">
+                                                <button onclick="clearColumnFilter('${colName}')">Limpar</button>
+                                                <button onclick="applyColumnFilter('${colName}')">Aplicar</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                    `;
+                }
+
+                // Colunas normais com filtro de texto
+                return `
+                    <th data-column="${colName}" data-sortable="true" class="${isSorted ? 'sorted ' + sortOrder.toLowerCase() : ''}">
+                        <div class="th-content">
+                            <div class="th-header" onclick="handleSort('${colName}')">
+                                ${displayName}
+                                <span class="sort-icon">▲</span>
+                            </div>
+                            <div class="th-filter">
+                                <input type="text"
+                                       class="filter-input"
+                                       placeholder="Filtrar..."
+                                       data-filter-column="${colName}"
+                                       value="${filterValue}"
+                                       onkeyup="handleColumnFilter(this)">
+                            </div>
+                        </div>
+                    </th>
+                `;
+            }).join('');
+
+            // Carregar valores únicos para checkbox filters
+            loadCheckboxFilterValues();
+        }
+
+        // Carregar valores únicos para filtros de checkbox
+        async function loadCheckboxFilterValues() {
+            const checkboxColumns = tableColumns.map(c => c.name).filter(name => 
+                !['ano_abertura', 'ano_baixa', 'municipio'].includes(name)
+            );
+
+            for (const col of checkboxColumns) {
+                try {
+                    // Buscar valores únicos (limitados)
+                    const params = new URLSearchParams({ limit: 50000 });
+                    const response = await fetch(`/api/dados?${params}`);
+                    const result = await response.json();
+
+                    if (result.success) {
+                        const uniqueValues = [...new Set(result.data.map(row => row[col]).filter(v => v))].sort();
+
+                        const filterDiv = document.querySelector(`.checkbox-filter[data-filter-column="${col}"]`);
+                        if (filterDiv) {
+                            const itemsContainer = filterDiv.querySelector('.checkbox-filter-items');
+                            itemsContainer.innerHTML = uniqueValues.slice(0, 200).map(val => `
+                                <label class="checkbox-item">
+                                    <input type="checkbox" value="${val}" onchange="updateCheckboxFilterCount('${col}')">
+                                    <span>${val}</span>
+                                    <span class="checkbox-count"></span>
+                                </label>
+                            `).join('');
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erro ao carregar valores para filtro:', err);
+                }
+            }
+        }
+
+        // Toggle checkbox filter panel
+        function toggleCheckboxFilter(element) {
+            const list = element.closest('.checkbox-filter').querySelector('.checkbox-filter-list');
+            const isVisible = list.style.display !== 'none';
+
+            // Fechar todos os outros
+            document.querySelectorAll('.checkbox-filter-list').forEach(l => l.style.display = 'none');
+
+            if (!isVisible) {
+                list.style.display = 'block';
+                // Carregar contagens
+                updateAllCheckboxCounts();
+            }
+        }
+
+        // Filtrar lista de checkboxes
+        function filterCheckboxList(input) {
+            const searchText = input.value.toLowerCase();
+            const items = input.closest('.checkbox-filter-list').querySelectorAll('.checkbox-item');
+
+            items.forEach(item => {
+                const text = item.querySelector('span').textContent.toLowerCase();
+                item.style.display = text.includes(searchText) ? '' : 'none';
+            });
+        }
+
+        // Atualizar contagem de selecionados
+        function updateCheckboxFilterCount(colName) {
+            const filterDiv = document.querySelector(`.checkbox-filter[data-filter-column="${colName}"]`);
+            const checked = filterDiv.querySelectorAll('input:checked');
+            const countSpan = filterDiv.querySelector('.checkbox-filter-count');
+            const toggleSpan = filterDiv.querySelector('.checkbox-filter-toggle');
+
+            if (checked.length > 0) {
+                countSpan.textContent = `(${checked.length})`;
+                toggleSpan.textContent = `${checked.length} selecionado(s)`;
+            } else {
+                countSpan.textContent = '';
+                toggleSpan.textContent = 'Selecionar...';
+            }
+        }
+
+        // Atualizar todas as contagens de checkboxes
+        function updateAllCheckboxCounts() {
+            const checkboxColumns = ['ano_abertura', 'ano_baixa', 'municipio'];
+
+            checkboxColumns.forEach(colName => {
+                const filterDiv = document.querySelector(`.checkbox-filter[data-filter-column="${colName}"]`);
+                if (!filterDiv) return;
+
+                const items = filterDiv.querySelectorAll('.checkbox-item');
+                items.forEach(item => {
+                    const checkbox = item.querySelector('input');
+                    const countSpan = item.querySelector('.checkbox-count');
+                    // O count será atualizado quando os dados forem carregados
+                });
+            });
+        }
+
+        // Aplicar filtro de checkbox
+        function applyColumnFilter(colName) {
+            const filterDiv = document.querySelector(`.checkbox-filter[data-filter-column="${colName}"]`);
+            const checked = filterDiv.querySelectorAll('input:checked');
+
+            if (checked.length > 0) {
+                const values = Array.from(checked).map(cb => cb.value);
+                filters[colName] = values.join('|'); // Usar pipe como separador
+            }
+
+            currentPage = 1;
+            loadData();
+
+            // Fechar dropdown
+            filterDiv.querySelector('.checkbox-filter-list').style.display = 'none';
+        }
+
+        // Handler para filtro de coluna
+        function handleColumnFilter(input) {
+            const column = input.dataset.filterColumn;
+            const value = input.value.trim();
+
+            if (value) {
+                filters[column] = value;
+            } else {
+                delete filters[column];
+            }
+
+            currentPage = 1;
+            loadData();
+        }
+
+        // Limpar filtros de coluna
+        function clearColumnFilter(colName) {
+            delete filters[colName];
+            const filterDiv = document.querySelector(`.checkbox-filter[data-filter-column="${colName}"]`);
+            if (filterDiv) {
+                filterDiv.querySelectorAll('input:checked').forEach(cb => cb.checked = false);
+                updateCheckboxFilterCount(colName);
+            }
+            currentPage = 1;
+            loadData();
+        }
+
+        // Carregar estatísticas
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/estatisticas');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const data = result.data;
+                    document.getElementById('totalEmpresas').textContent = formatNumber(data.totalEmpresas);
+                    document.getElementById('totalRegioes').textContent = data.porRegiao.length;
+                    document.getElementById('totalUFs').textContent = data.porUF.length;
+                    document.getElementById('totalAnos').textContent = data.porAno.length;
+                }
+            } catch (err) {
+                console.error('Erro ao carregar estatísticas:', err);
+            }
+        }
+
+        // Carregar página de estatísticas MEI
+        async function loadEstatisticasPage() {
+            // Carregar UF options
+            await loadUFOptions();
+
+            // Definir datas padrão - mostrar apenas dados após 2009
+            document.getElementById('filterDataInicio').value = '2010-01-01';
+            document.getElementById('filterDataFim').value = '2024-12-31';
+
+            await loadEstatisticasMEI();
+        }
+
+        // Carregar opções de UF
+        async function loadUFOptions() {
+            try {
+                const response = await fetch('/api/estatisticas');
+                const result = await response.json();
+
+                if (result.success) {
+                    const ufSelect = document.getElementById('filterUF');
+                    ufSelect.innerHTML = '<option value="">Todos os Estados</option>';
+
+                    result.data.porUF.forEach(item => {
+                        ufSelect.innerHTML += `<option value="${item.uf}">${item.uf}</option>`;
+                    });
+
+                    // Carregar municípios
+                    loadMunicipioOptions();
+                }
+            } catch (err) {
+                console.error('Erro ao carregar UFs:', err);
+            }
+        }
+
+        // Carregar opções de município
+        async function loadMunicipioOptions(uf = '') {
+            try {
+                // Usar API de estatísticas para obter lista de municípios únicos
+                // Limitamos a 100 para não sobrecarregar o dropdown
+                const response = await fetch('/api/estatisticas');
+                const result = await response.json();
+
+                if (result.success) {
+                    const municipioSelect = document.getElementById('filterMunicipio');
+                    // Extrair municípios únicos dos dados (amostragem)
+                    // Como não temos endpoint direto, mantemos "Todos os Municípios" por ora
+                    // O filtro será aplicado via LIKE no backend
+                    municipioSelect.innerHTML = '<option value="">Todos os Municípios</option>';
+                }
+            } catch (err) {
+                console.error('Erro ao carregar municípios:', err);
+            }
+        }
+
+        // Carregar estatísticas MEI
+        async function loadEstatisticasMEI() {
+            try {
+                console.log('[MEI] ===== INICIO loadEstatisticasMEI =====');
+                
+                const dataInicioEl = document.getElementById('filterDataInicio');
+                const dataFimEl = document.getElementById('filterDataFim');
+                const ufEl = document.getElementById('filterUF');
+                const municipioEl = document.getElementById('filterMunicipio');
+                
+                console.log('[MEI] Elementos encontrados:', {
+                    dataInicio: dataInicioEl,
+                    dataFim: dataFimEl,
+                    uf: ufEl,
+                    municipio: municipioEl
+                });
+                
+                const dataInicio = dataInicioEl ? dataInicioEl.value : null;
+                const dataFim = dataFimEl ? dataFimEl.value : null;
+                const uf = ufEl ? ufEl.value : null;
+                const municipio = municipioEl ? municipioEl.value : null;
+
+                console.log('[MEI] Valores dos filtros:', { dataInicio, dataFim, uf, municipio });
+
+                // Mostrar loading
+                const meiAtivosEl = document.getElementById('meiAtivos');
+                const meiBaixadosEl = document.getElementById('meiBaixados');
+                const meiTotalEl = document.getElementById('meiTotal');
+                
+                console.log('[MEI] Cards encontrados:', {
+                    meiAtivos: meiAtivosEl,
+                    meiBaixados: meiBaixadosEl,
+                    meiTotal: meiTotalEl
+                });
+                
+                if (meiAtivosEl) meiAtivosEl.textContent = '...';
+                if (meiBaixadosEl) meiBaixadosEl.textContent = '...';
+                if (meiTotalEl) meiTotalEl.textContent = '...';
+
+                // Construir query params
+                const params = new URLSearchParams();
+                if (dataInicio) params.set('data_inicio', dataInicio);
+                if (dataFim) params.set('data_fim', dataFim);
+                if (uf) params.set('uf', uf);
+                if (municipio) params.set('municipio', municipio);
+
+                const url = `/api/estatisticas-mei?${params}`;
+                console.log('[MEI] URL da requisição:', url);
+                console.log('[MEI] Fetch iniciado...');
+
+                // Usar nova API que processa no servidor
+                const response = await fetch(url);
+                console.log('[MEI] Fetch completado, status:', response.status);
+
+                if (!response.ok) {
+                    console.error('[MEI] Response not ok:', response.status, response.statusText);
+                    if (meiAtivosEl) meiAtivosEl.textContent = 'Erro';
+                    if (meiBaixadosEl) meiBaixadosEl.textContent = 'Erro';
+                    if (meiTotalEl) meiTotalEl.textContent = 'Erro';
+                    return;
+                }
+
+                const result = await response.json();
+                console.log('[MEI] Result recebido:', JSON.stringify(result).substring(0, 500));
+
+                if (result.success) {
+                    const { meiAtivos, meiBaixados, meiTotal, evolucaoAnual } = result.data;
+                    console.log('[MEI] Dados processados:', { meiAtivos, meiBaixados, meiTotal, evolucaoAnualLength: evolucaoAnual ? evolucaoAnual.length : 0 });
+
+                    // Atualizar cards
+                    if (meiAtivosEl) meiAtivosEl.textContent = formatNumber(meiAtivos);
+                    if (meiBaixadosEl) meiBaixadosEl.textContent = formatNumber(meiBaixados);
+                    if (meiTotalEl) meiTotalEl.textContent = formatNumber(meiTotal);
+                    console.log('[MEI] Cards atualizados com sucesso');
+
+                    // Renderizar tabela
+                    const tbody = document.getElementById('tableBodyEvolucaoAnual');
+                    console.log('[MEI] Tabela body encontrado:', tbody);
+                    if (tbody && evolucaoAnual) {
+                        tbody.innerHTML = evolucaoAnual.map(item => {
+                            const saldo = item.aberturas - item.baixas;
+                            return `
+                                <tr>
+                                    <td>${item.ano}</td>
+                                    <td>${formatNumber(item.aberturas)}</td>
+                                    <td>${formatNumber(item.baixas)}</td>
+                                    <td style="color: ${saldo >= 0 ? '#10b981' : '#dc2626'}">${formatNumber(saldo)}</td>
+                                    <td>${formatNumber(item.ativos)}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                        console.log('[MEI] Tabela renderizada, linhas:', evolucaoAnual.length);
+                    } else {
+                        console.warn('[MEI] Tabela body ou dados não encontrados');
+                    }
+                } else {
+                    console.error('[MEI] result.success = false:', result);
+                }
+                console.log('[MEI] ===== FIM loadEstatisticasMEI =====');
+            } catch (err) {
+                console.error('[MEI] ERRO catch:', err.message, err.stack);
+                const meiAtivosEl = document.getElementById('meiAtivos');
+                const meiBaixadosEl = document.getElementById('meiBaixados');
+                const meiTotalEl = document.getElementById('meiTotal');
+                if (meiAtivosEl) meiAtivosEl.textContent = 'Erro';
+                if (meiBaixadosEl) meiBaixadosEl.textContent = 'Erro';
+                if (meiTotalEl) meiTotalEl.textContent = 'Erro';
+            }
+        }
+
+
+        // Carregar dados
+        async function loadData() {
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    limit: 100,
+                    sortBy: sortBy,
+                    sortOrder: sortOrder,
+                    filters: JSON.stringify(filters)
+                });
+
+                const response = await fetch(`/api/dados?${params}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    allData = result.data;
+                    totalRecords = result.pagination.total;
+                    totalPages = result.pagination.totalPages;
+                    
+                    renderTable();
+                    renderPagination();
+                }
+            } catch (err) {
+                console.error('Erro ao carregar dados:', err);
+                document.getElementById('tableBody').innerHTML = `
+                    <tr>
+                        <td colspan="${tableColumns.length + 1}">
+                            <div class="loading">Erro ao carregar dados</div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Renderizar tabela
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (allData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${tableColumns.length + 1}">
+                            <div class="loading">Nenhum registro encontrado</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = allData.map(row => `
+                <tr>
+                    ${tableColumns.map(col => {
+                        let value = row[col.name];
+                        let displayValue = value;
+                        
+                        // Formatar data
+                        if (col.name === 'quantidade') {
+                            displayValue = formatNumber(value);
+                        }
+                        
+                        // Badge para tipo situação
+                        if (col.name === 'tipo_situacao') {
+                            const badgeClass = value === 'Ativa' ? 'badge-ativa' : 'badge-inativa';
+                            displayValue = `<span class="badge ${badgeClass}">${value}</span>`;
+                        }
+                        
+                        return `<td>${displayValue || '-'}</td>`;
+                    }).join('')}
+                </tr>
+            `).join('');
+        }
+
+        // Renderizar paginação
+        function renderPagination() {
+            const controls = document.getElementById('paginationControls');
+            const info = document.getElementById('paginationInfo');
+            
+            // Info
+            const start = (currentPage - 1) * 100 + 1;
+            const end = Math.min(currentPage * 100, totalRecords);
+            info.textContent = `Mostrando ${start}-${end} de ${formatNumber(totalRecords)} registros`;
+            
+            // Botões
+            let buttons = '';
+            
+            // Anterior
+            buttons += `<button class="pagination-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>«</button>`;
+            
+            // Páginas
+            const maxVisible = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            
+            if (endPage - startPage < maxVisible - 1) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+            }
+            
+            if (startPage > 1) {
+                buttons += `<button class="pagination-btn" onclick="goToPage(1)">1</button>`;
+                if (startPage > 2) buttons += `<button class="pagination-btn" disabled>...</button>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                buttons += `<button class="pagination-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) buttons += `<button class="pagination-btn" disabled>...</button>`;
+                buttons += `<button class="pagination-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            }
+            
+            // Próximo
+            buttons += `<button class="pagination-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>»</button>`;
+            
+            controls.innerHTML = buttons;
+        }
+
+        // Navegação
+        function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            loadData();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Ordenação
+        function handleSort(column) {
+            if (sortBy === column) {
+                sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                sortBy = column;
+                sortOrder = 'ASC';
+            }
+            
+            // Atualizar UI
+            document.querySelectorAll('#tableHeader th').forEach(th => {
+                th.classList.remove('sorted', 'asc', 'desc');
+                if (th.dataset.column === sortBy) {
+                    th.classList.add('sorted', sortOrder.toLowerCase());
+                }
+            });
+            
+            loadData();
+        }
+
+        // Busca global
+        function handleGlobalSearch(e) {
+            const query = e.target.value.trim();
+
+            if (query) {
+                filters = {
+                    municipio: query,
+                    uf: query,
+                    regiao: query,
+                    natureza_juridica: query
+                };
+            } else {
+                filters = {};
+            }
+
+            currentPage = 1;
+            loadData();
+        }
+
+        // Limpar filtros
+        function limparFiltros() {
+            filters = {};
+            document.getElementById('globalSearch').value = '';
+            // Limpar também os filtros de coluna
+            document.querySelectorAll('.filter-input').forEach(input => {
+                input.value = '';
+            });
+            currentPage = 1;
+            loadData();
+        }
+
+        // Exportar CSV
+        function exportarCSV() {
+            // Carregar todos os dados para exportação
+            const params = new URLSearchParams({
+                page: 1,
+                limit: 1000000,
+                sortBy: sortBy,
+                sortOrder: sortOrder,
+                filters: JSON.stringify(filters)
+            });
+
+            fetch(`/api/dados?${params}`)
+                .then(res => res.json())
+                .then(result => {
+                    if (result.success) {
+                        const data = result.data.data;
+                        const headers = tableColumns.map(col => col.name);
+                        
+                        let csv = headers.join(';') + '\n';
+                        data.forEach(row => {
+                            csv += headers.map(h => {
+                                let val = row[h] || '';
+                                val = String(val).replace(/"/g, '""');
+                                if (val.includes(';') || val.includes('\n')) {
+                                    val = `"${val}"`;
+                                }
+                                return val;
+                            }).join(';') + '\n';
+                        });
+
+                        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `serpro_dados_${new Date().toISOString().slice(0,10)}.csv`;
+                        link.click();
+                    }
+                });
+        }
+
+        // Utilitários
+        function formatNumber(num) {
+            return new Intl.NumberFormat('pt-BR').format(num);
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>
