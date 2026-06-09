@@ -436,24 +436,34 @@ def clicar_exportar_final():
         salvar_snapshot("05_erro_exportacao")
         return False
 
-def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
+def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False, anos_para_reimportar=None):
     """Importa o arquivo Excel baixado para o banco SQLite.
+
+    Logica:
+        - 1a vez: limpar_antes=True apaga tudo.
+        - Runs seguintes:
+            * anos_para_reimportar=None (default): so acumula (INSERT OR IGNORE).
+            * anos_para_reimportar=[2026]: apaga SOMENTE os registros com
+              ano_abertura IN (anos_para_reimportar) antes de inserir. Util
+              para o ano atual (que ainda esta crescendo) e qualquer ano
+              que voce queira refresh.
+            * Anos passados (nao listados) permanecem intactos.
 
     Args:
         caminho_arquivo: caminho do .xlsx
         limpar_antes: se True, faz DELETE FROM antes (modo single-shot).
-                      Se False (default), ACUMULA usando INSERT OR IGNORE em
-                      uma UNIQUE constraint de 13 campos, evitando duplicatas
-                      e preservando dados de imports anteriores.
-
-    Para o modo producao (varios lotes acumulados), manter limpar_antes=False.
-    Para um import isolado de um unico arquivo, usar limpar_antes=True.
+        anos_para_reimportar: lista de anos a recarregar (ex: [2026]).
     """
     print("\n" + "="*60)
     print("IMPORTANDO EXCEL PARA SQLITE")
     print("="*60)
     print(f"Arquivo: {caminho_arquivo}")
-    print(f"Modo: {'LIMPAR ANTES' if limpar_antes else 'ACUMULAR (preserva dados anteriores)'}")
+    if limpar_antes:
+        print("Modo: LIMPAR TUDO antes (primeira carga)")
+    elif anos_para_reimportar:
+        print(f"Modo: REIMPORTAR ANOS {anos_para_reimportar} (demais preservados)")
+    else:
+        print("Modo: ACUMULAR (preserva tudo, so adiciona)")
     sys.stdout.flush()
 
     nome_tabela = 'dados_serpro'
@@ -489,11 +499,9 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
         ''')
         cnxn.commit()
 
-        # Se for um banco antigo SEM UNIQUE, recriar tabela com UNIQUE
-        # (idempotente: verifica se UNIQUE ja existe via pragma)
+        # Migracao automatica: se a tabela existe mas sem UNIQUE
         cursor.execute(f"PRAGMA index_list({nome_tabela})")
         indices = [r[1] for r in cursor.fetchall()]
-        # Procura indice unique que cubra os 13 campos
         tem_unique = False
         for idx in indices:
             try:
@@ -507,7 +515,6 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
 
         if not tem_unique:
             print("⚠ Tabela antiga sem UNIQUE. Migrando...")
-            # Renomeia, recria com UNIQUE, copia dados, dropa antiga
             cursor.execute(f"ALTER TABLE {nome_tabela} RENAME TO {nome_tabela}_old")
             cursor.execute(f'''
                 CREATE TABLE {nome_tabela} (
@@ -541,12 +548,21 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
             cnxn.commit()
             print("  ✓ Migracao concluida")
 
-        # Limpar dados anteriores (so se explicitamente pedido)
+        # Politica de limpeza
         if limpar_antes:
             print("Limpando dados da tabela dados_serpro...")
             cursor.execute(f"DELETE FROM {nome_tabela}")
             cnxn.commit()
             print("Dados limpos com sucesso.")
+        elif anos_para_reimportar:
+            placeholders = ",".join("?" * len(anos_para_reimportar))
+            cursor.execute(
+                f"DELETE FROM {nome_tabela} WHERE ano_abertura IN ({placeholders})",
+                [str(a) for a in anos_para_reimportar]
+            )
+            removidos = cursor.rowcount
+            cnxn.commit()
+            print(f"Removidos {removidos} registros dos anos {anos_para_reimportar} para reimportacao.")
         sys.stdout.flush()
 
         # Processar com openpyxl em chunks
@@ -590,7 +606,6 @@ def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
                 print(f"  Inserting chunk {chunk_num}: {len(dados)} rows... (row {row_num})")
                 sys.stdout.flush()
 
-                # INSERT OR IGNORE pula duplicatas (chave UNIQUE)
                 cursor.executemany(f'''
                     INSERT OR IGNORE INTO {nome_tabela} (
                         ano_abertura, mes_abertura, ano_baixa, mes_baixa,
@@ -912,7 +927,13 @@ def importar_ultimo_download(apagar_apos=True):
     arquivo_baixado = os.path.join(download_folder, arquivos[0])
     print(f"\nArquivo encontrado: {arquivo_baixado}")
 
-    ok = importar_excel_para_sqlite(arquivo_baixado)
+    # Detecta o ano atual no xlsx para reimportar (so esse ano)
+    from datetime import datetime as _dt
+    anos_xlsx = _detectar_anos_xlsx(arquivo_baixado)
+    ano_atual = _dt.now().year
+    anos_para_reimportar = [a for a in anos_xlsx if a == ano_atual] or None
+
+    ok = importar_excel_para_sqlite(arquivo_baixado, anos_para_reimportar=anos_para_reimportar)
 
     if ok and apagar_apos:
         try:
@@ -946,6 +967,25 @@ def executar_ciclo_completo():
     print("✓ CICLO COMPLETO FINALIZADO COM SUCESSO!")
     print("="*60)
     return True
+
+
+def _detectar_anos_xlsx(caminho_arquivo):
+    """Detecta os anos presentes em um xlsx (coluna ano_abertura).
+    Le no maximo 5000 linhas para performance. Retorna set() se nao conseguir."""
+    anos = set()
+    try:
+        wb = load_workbook(filename=caminho_arquivo, read_only=True, data_only=True)
+        ws = wb.active
+        for i, row in enumerate(ws.iter_rows(min_row=2, max_row=5001, values_only=True)):
+            if row and row[0] is not None:
+                try:
+                    anos.add(int(str(row[0]).strip()))
+                except (ValueError, TypeError):
+                    pass
+        wb.close()
+    except Exception as e:
+        print(f"  ⚠ Erro ao detectar anos do xlsx: {e}")
+    return anos
 
 
 def arquivo_eh_vazio(caminho_arquivo, max_bytes=50000):
@@ -1005,6 +1045,13 @@ def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
     # É mais comum o SERPRO ter dados nos anos recentes; paramos quando vier vazio.
     todos_anos = list(range(ano_fim, ano_inicio - 1, -1))
 
+    # O ano atual (hoje) eh o unico que precisa ser reimportado: dados de
+    # anos passados nao mudam. Entao quando o lote contiver o ano atual,
+    # pedimos para apagar SOMENTE esse(s) ano(s) antes de reinserir.
+    ano_atual = agora.year
+    print(f"  Ano atual (reimportado a cada run): {ano_atual}")
+    print(f"  Anos passados: preservados (INSERT OR IGNORE)")
+
     total_baixados = 0
     total_importados = 0
     total_vazios = 0
@@ -1060,7 +1107,11 @@ def baixar_todos_sc(ano_inicio=None, ano_fim=None, tamanho_lote=4,
         total_vazios = 0
         total_baixados += 1
         print(f"  Importando para o banco SQLite...")
-        if importar_excel_para_sqlite(caminho):
+
+        # Detecta se o lote contem o ano atual (so esse deve ser reimportado)
+        anos_para_reimportar = [a for a in lote if a == ano_atual]
+
+        if importar_excel_para_sqlite(caminho, anos_para_reimportar=anos_para_reimportar or None):
             total_importados += 1
             print(f"  ✓ Lote {lote_num} OK ({total_importados} importados no total)")
             # Importado OK: apaga o xlsx para nao acumular/repetir
