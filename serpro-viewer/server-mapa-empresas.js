@@ -221,7 +221,7 @@ app.get('/api/colunas', (req, res) => {
 //
 // GET /api/relatorio?q=<SELECT ...>
 const RELATORIO_MAX_LIMIT = 100;
-const RELATORIO_TIMEOUT_MS = 15_000;
+const RELATORIO_TIMEOUT_MS = 180_000;
 
 function sanitizeSelect(rawSql) {
     // Recebe a query crua, devolve { ok, sql, error }
