@@ -1146,6 +1146,103 @@ def arquivo_eh_vazio(caminho_arquivo, max_bytes=50000):
     return False
 
 
+def ja_tem_no_banco(ano, mes, minimo_registros=10):
+    """Verifica se o (ano, mes) ja foi importado no banco SQLite.
+
+    Robusto contra variacoes:
+        - mes pode ser int (3) ou string ('3', 'Marco', 'Marco')
+        - o banco pode ter encoding baguncado ('Mar�o' em vez de 'Marco')
+        - acento/mes escritos de formas diferentes
+
+    Retorna:
+        (True, N)  se ja existem >= minimo_registros registros deste (ano, mes)
+        (False, 0) caso contrario (ou erro)
+    """
+    MESES_NOMES = {
+        1: ["janeiro", "jan"], 2: ["fevereiro", "fev"],
+        3: ["marco", "mar", "março"], 4: ["abril", "abr"],
+        5: ["maio", "mai"], 6: ["junho", "jun"],
+        7: ["julho", "jul"], 8: ["agosto", "ago"],
+        9: ["setembro", "set"], 10: ["outubro", "out"],
+        11: ["novembro", "nov"], 12: ["dezembro", "dez"]
+    }
+
+    def normaliza(s):
+        """Remove acento e baixa caixa."""
+        if s is None:
+            return ""
+        s = str(s).strip().lower()
+        # Remove acentos
+        s = (s.replace("ã", "a").replace("á", "a").replace("à", "a")
+              .replace("é", "e").replace("ê", "e")
+              .replace("í", "i")
+              .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+              .replace("ú", "u").replace("ç", "c"))
+        return s
+
+    # Descobre o numero do mes
+    if isinstance(mes, int):
+        mes_num = mes
+    else:
+        s = normaliza(mes)
+        if s.isdigit():
+            mes_num = int(s)
+        else:
+            mes_num = None
+            for n, nomes in MESES_NOMES.items():
+                for nome in nomes:
+                    if nome in s or s in nome:
+                        mes_num = n
+                        break
+                if mes_num:
+                    break
+            if mes_num is None:
+                # Sem mes reconhecido, considera que NAO tem (melhor tentar baixar)
+                return (False, 0)
+
+    nomes_mes = MESES_NOMES.get(mes_num, [])
+    # Lista de padroes aceitos para match
+    padroes = [str(mes_num), f"{mes_num:02d}"] + nomes_mes
+
+    try:
+        cnxn = sqlite3.connect('base_dados.db')
+        cur = cnxn.cursor()
+        # Tenta match exato primeiro (caso feliz)
+        for padrao in padroes:
+            cur.execute(
+                "SELECT COUNT(*) FROM dados_serpro WHERE ano_abertura = ? AND mes_abertura = ?",
+                (str(ano), padrao)
+            )
+            n = cur.fetchone()[0]
+            if n > 0:
+                cnxn.close()
+                return (n >= minimo_registros, n)
+        # Fallback: normaliza tudo no Python e compara
+        cur.execute(
+            "SELECT COUNT(*) FROM dados_serpro WHERE ano_abertura = ?",
+            (str(ano),)
+        )
+        # Pega os meses distintos deste ano e compara normalizado
+        cur.execute(
+            "SELECT DISTINCT mes_abertura FROM dados_serpro WHERE ano_abertura = ?",
+            (str(ano),)
+        )
+        for (m_banco,) in cur.fetchall():
+            if normaliza(m_banco) in [normaliza(p) for p in padroes]:
+                cur.execute(
+                    "SELECT COUNT(*) FROM dados_serpro WHERE ano_abertura = ? AND mes_abertura = ?",
+                    (str(ano), m_banco)
+                )
+                n = cur.fetchone()[0]
+                cnxn.close()
+                return (n >= minimo_registros, n)
+        cnxn.close()
+        return (False, 0)
+    except Exception as e:
+        print(f"  ⚠ Erro ao consultar banco: {e}")
+        return (False, 0)
+
+
 def producao_completa_brasil(ano_inicio=None, ano_fim=None,
                               intervalo_minutos=0, limite_meses=None,
                               mes_inicio=None, mes_fim=None):
@@ -1234,6 +1331,12 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
         elapsed = time.time() - inicio
         print(f"\n>>> [{mes_num}/{len(combinacoes)}] {MESES_PT[mes-1]}/{ano} (decorrido: {elapsed/60:.1f} min)")
         print("-" * 70)
+
+        # 0) VALIDACAO: ja tem no banco? Se sim, pula
+        tem, n_registros = ja_tem_no_banco(ano, mes)
+        if tem:
+            print(f"  ⏭  Ja existe no banco ({n_registros:,} registros). Pulando.".replace(',', '.'))
+            continue
 
         # 1) Baixar
         caminho = baixar_somente(ano=ano, mes=mes)
@@ -1454,6 +1557,15 @@ URL base montada (Brasil inteiro, 1 mes especifico):
                 mes = args.mes  # nome do mes
         else:
             mes = agora.month
+
+        # Validacao: ja tem no banco?
+        tem, n_registros = ja_tem_no_banco(ano, mes)
+        if tem:
+            print(f"\n⏭  Ja existe no banco: {n_registros:,} registros para {ano}/{mes}".replace(',', '.'))
+            print(f"   Pulando download (force=True se quiser baixar de novo).")
+            import sys
+            sys.exit(0)
+
         caminho = baixar_somente(ano=ano, mes=mes)
         if caminho:
             print(f"\nArquivo baixado: {caminho}")
