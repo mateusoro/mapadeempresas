@@ -436,12 +436,24 @@ def clicar_exportar_final():
         salvar_snapshot("05_erro_exportacao")
         return False
 
-def importar_excel_para_sqlite(caminho_arquivo):
-    """Importa o arquivo Excel baixado para o banco SQLite"""
+def importar_excel_para_sqlite(caminho_arquivo, limpar_antes=False):
+    """Importa o arquivo Excel baixado para o banco SQLite.
+
+    Args:
+        caminho_arquivo: caminho do .xlsx
+        limpar_antes: se True, faz DELETE FROM antes (modo single-shot).
+                      Se False (default), ACUMULA usando INSERT OR IGNORE em
+                      uma UNIQUE constraint de 13 campos, evitando duplicatas
+                      e preservando dados de imports anteriores.
+
+    Para o modo producao (varios lotes acumulados), manter limpar_antes=False.
+    Para um import isolado de um unico arquivo, usar limpar_antes=True.
+    """
     print("\n" + "="*60)
     print("IMPORTANDO EXCEL PARA SQLITE")
     print("="*60)
     print(f"Arquivo: {caminho_arquivo}")
+    print(f"Modo: {'LIMPAR ANTES' if limpar_antes else 'ACUMULAR (preserva dados anteriores)'}")
     sys.stdout.flush()
 
     nome_tabela = 'dados_serpro'
@@ -451,14 +463,7 @@ def importar_excel_para_sqlite(caminho_arquivo):
         cnxn = sqlite3.connect('base_dados.db')
         cursor = cnxn.cursor()
 
-        # Limpar dados anteriores
-        print("Limpando dados da tabela dados_serpro...")
-        cursor.execute(f"DELETE FROM {nome_tabela}")
-        cnxn.commit()
-        print("Dados limpos com sucesso.")
-        sys.stdout.flush()
-
-        # Criar tabela se nao existir
+        # Criar tabela se nao existir (com UNIQUE constraint de 13 campos)
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS {nome_tabela} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -474,10 +479,75 @@ def importar_excel_para_sqlite(caminho_arquivo):
                 tipo_situacao TEXT,
                 porte TEXT,
                 opcao_mei TEXT,
-                quantidade INTEGER
+                quantidade INTEGER,
+                UNIQUE(
+                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                    regiao, uf, municipio, natureza_juridica,
+                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
+                )
             )
         ''')
         cnxn.commit()
+
+        # Se for um banco antigo SEM UNIQUE, recriar tabela com UNIQUE
+        # (idempotente: verifica se UNIQUE ja existe via pragma)
+        cursor.execute(f"PRAGMA index_list({nome_tabela})")
+        indices = [r[1] for r in cursor.fetchall()]
+        # Procura indice unique que cubra os 13 campos
+        tem_unique = False
+        for idx in indices:
+            try:
+                cursor.execute(f"PRAGMA index_info({idx})")
+                cols_idx = [r[2] for r in cursor.fetchall()]
+                if len(cols_idx) >= 13:
+                    tem_unique = True
+                    break
+            except Exception:
+                pass
+
+        if not tem_unique:
+            print("⚠ Tabela antiga sem UNIQUE. Migrando...")
+            # Renomeia, recria com UNIQUE, copia dados, dropa antiga
+            cursor.execute(f"ALTER TABLE {nome_tabela} RENAME TO {nome_tabela}_old")
+            cursor.execute(f'''
+                CREATE TABLE {nome_tabela} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ano_abertura TEXT, mes_abertura TEXT,
+                    ano_baixa TEXT, mes_baixa TEXT,
+                    regiao TEXT, uf TEXT, municipio TEXT,
+                    natureza_juridica TEXT, des_secao TEXT,
+                    tipo_situacao TEXT, porte TEXT, opcao_mei TEXT,
+                    quantidade INTEGER,
+                    UNIQUE(
+                        ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                        regiao, uf, municipio, natureza_juridica,
+                        des_secao, tipo_situacao, porte, opcao_mei, quantidade
+                    )
+                )
+            ''')
+            cursor.execute(f'''
+                INSERT OR IGNORE INTO {nome_tabela} (
+                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                    regiao, uf, municipio, natureza_juridica,
+                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
+                )
+                SELECT
+                    ano_abertura, mes_abertura, ano_baixa, mes_baixa,
+                    regiao, uf, municipio, natureza_juridica,
+                    des_secao, tipo_situacao, porte, opcao_mei, quantidade
+                FROM {nome_tabela}_old
+            ''')
+            cursor.execute(f"DROP TABLE {nome_tabela}_old")
+            cnxn.commit()
+            print("  ✓ Migracao concluida")
+
+        # Limpar dados anteriores (so se explicitamente pedido)
+        if limpar_antes:
+            print("Limpando dados da tabela dados_serpro...")
+            cursor.execute(f"DELETE FROM {nome_tabela}")
+            cnxn.commit()
+            print("Dados limpos com sucesso.")
+        sys.stdout.flush()
 
         # Processar com openpyxl em chunks
         print("Lendo Excel com openpyxl...")
@@ -489,6 +559,7 @@ def importar_excel_para_sqlite(caminho_arquivo):
         chunk_size = 5000
         chunk_num = 0
         total_inserido = 0
+        total_duplicatas = 0
         row_num = 0
         dados = []
 
@@ -519,17 +590,19 @@ def importar_excel_para_sqlite(caminho_arquivo):
                 print(f"  Inserting chunk {chunk_num}: {len(dados)} rows... (row {row_num})")
                 sys.stdout.flush()
 
+                # INSERT OR IGNORE pula duplicatas (chave UNIQUE)
                 cursor.executemany(f'''
-                    INSERT INTO {nome_tabela} (
+                    INSERT OR IGNORE INTO {nome_tabela} (
                         ano_abertura, mes_abertura, ano_baixa, mes_baixa,
                         regiao, uf, municipio, natureza_juridica,
                         des_secao, tipo_situacao, porte, opcao_mei, quantidade
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', dados)
                 cnxn.commit()
-
-                total_inserido += len(dados)
-                print(f"  Chunk {chunk_num} inserted! Total: {total_inserido}")
+                inseridos_no_chunk = cursor.rowcount if cursor.rowcount >= 0 else len(dados)
+                total_inserido += inseridos_no_chunk
+                total_duplicatas += (len(dados) - inseridos_no_chunk)
+                print(f"  Chunk {chunk_num}: +{inseridos_no_chunk} novos (duplicatas: {len(dados) - inseridos_no_chunk})")
                 sys.stdout.flush()
                 dados = []
 
@@ -540,16 +613,17 @@ def importar_excel_para_sqlite(caminho_arquivo):
             sys.stdout.flush()
 
             cursor.executemany(f'''
-                INSERT INTO {nome_tabela} (
+                INSERT OR IGNORE INTO {nome_tabela} (
                     ano_abertura, mes_abertura, ano_baixa, mes_baixa,
                     regiao, uf, municipio, natureza_juridica,
                     des_secao, tipo_situacao, porte, opcao_mei, quantidade
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', dados)
             cnxn.commit()
-
-            total_inserido += len(dados)
-            print(f"  Final chunk inserted! Total: {total_inserido}")
+            inseridos_no_chunk = cursor.rowcount if cursor.rowcount >= 0 else len(dados)
+            total_inserido += inseridos_no_chunk
+            total_duplicatas += (len(dados) - inseridos_no_chunk)
+            print(f"  Final chunk: +{inseridos_no_chunk} novos (duplicatas: {len(dados) - inseridos_no_chunk})")
             sys.stdout.flush()
 
         wb.close()
@@ -563,7 +637,10 @@ def importar_excel_para_sqlite(caminho_arquivo):
 
         print("\n" + "="*60)
         print(f"IMPORTACAO CONCLUIDA!")
-        print(f"Total registros na tabela: {total_final}")
+        print(f"Linhas lidas do Excel:   {row_num}")
+        print(f"Novos registros:         +{total_inserido}")
+        print(f"Duplicatas ignoradas:     {total_duplicatas}")
+        print(f"Total na tabela:         {total_final}")
         print("="*60)
         sys.stdout.flush()
         return True
