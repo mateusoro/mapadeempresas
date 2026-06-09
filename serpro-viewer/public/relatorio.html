@@ -266,8 +266,8 @@
     .gridjs-thead { background: var(--bg-subtle) !important; }
     .gridjs-th {
         background: var(--bg-subtle) !important;
-        color: var(--text-muted) !important;
-        font-weight: 500 !important;
+        color: var(--text) !important;
+        font-weight: 600 !important;
         font-size: 11px !important;
         text-transform: uppercase !important;
         letter-spacing: 0.05em !important;
@@ -748,11 +748,11 @@
             id: c,
             sort: { enabled: true },
             formatter: (cell) => {
-                if (cell == null) return '<span style="color: var(--text-faint)">—</span>';
+                if (cell == null) return gridjs.html('<span style="color: var(--text-faint)">—</span>');
                 if (typeof cell === 'number') {
-                    return formatNumber(cell);
+                    return gridjs.html(`<span style="font-variant-numeric: tabular-nums;">${formatNumber(cell)}</span>`);
                 }
-                return escapeHtml(String(cell));
+                return gridjs.html(escapeHtml(String(cell)));
             }
         }));
         const data = rows.map(r => columns.map(c => r[c]));
