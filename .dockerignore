@@ -1,18 +1,24 @@
-# Ignore all files by default
-*
-
-# Allow the serpro-viewer directory
-!serpro-viewer
-
-# Ignore node_modules and data inside serpro-viewer
+# Ignore local node_modules
+node_modules
 serpro-viewer/node_modules
 serpro-viewer/snapshots
+
+# Ignore databases
+*.db
 serpro-viewer/*.db
+
+# Ignore logs
+*.log
 serpro-viewer/*.log
 
-# Ignore databases and logs in the root
-*.db
-*.log
+# Ignore large Python scraper files and caches
 __pycache__
 downloads_serpro
 serpro_snapshots_logs
+exportador_dados_serpro.py
+otimizar_texto.py
+rodar_producao.ps1
+
+# Ignore Git
+.git
+.gitignore
