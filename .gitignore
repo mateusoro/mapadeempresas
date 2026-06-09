@@ -33,3 +33,19 @@ desktop.ini
 
 # OpenCode
 .opencode/
+
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Logs de execucao
+*.log
+producao_brasil_*.log
+producao_sc*.log
+
+# Snapshots HTML de debug
+serpro-viewer/snapshots/
+

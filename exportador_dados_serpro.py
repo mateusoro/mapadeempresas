@@ -1276,21 +1276,27 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
         ano_fim = agora.year
     if ano_inicio is None:
         ano_inicio = 1932  # SERPRO tem dados antigos
-    # IMPORTANTE: mes_inicio NAO pode ser maior que o mes atual,
-    # senao o script busca "Dezembro/2026" no futuro (que nao existe).
-    # Por padrao, comeca no mes ATUAL.
+    # IMPORTANTE: o mes maximo que pode ter dados no SERPRO e o mes
+    # ANTERIOR ao atual. Em Junho, o maximo e Maio (mes_atual - 1).
+    # Em Janeiro, o maximo e Dezembro do ano anterior (ano_fim - 1, mes 12).
     if mes_inicio is None:
-        mes_inicio = mes_atual
+        mes_inicio = mes_atual - 1
     else:
-        # Respeita o argumento, mas se for maior que o mes atual e o ano for o ano atual, limita
-        if mes_inicio > mes_atual:
-            mes_inicio = mes_atual
+        # Respeita o argumento, mas se for maior que o mes maximo permitido, limita
+        if mes_inicio > mes_atual - 1:
+            mes_inicio = mes_atual - 1
     if mes_fim is None:
         mes_fim = 1
+    # Se mes_inicio ficar 0 (estamos em Janeiro), o ultimo mes valido e
+    # Dezembro do ano ANTERIOR.
+    if mes_inicio < 1:
+        mes_inicio = 12
+        ano_fim = agora.year - 1
 
     print("\n" + "="*70)
     print("PRODUCAO COMPLETA BRASIL - 1 MES POR VEZ")
     print(f"  Hoje: {MESES_PT[mes_atual-1]}/{agora.year}")
+    print(f"  Mes maximo permitido: {MESES_PT[mes_inicio-1]}/{ano_fim} (mes atual - 1)")
     print(f"  Range: {ano_inicio}..{ano_fim} | Meses: {mes_inicio}..{mes_fim}")
     print(f"  Intervalo: {intervalo_minutos} min | Limite: {limite_meses or 'infinito'} meses")
     print(f"  Brasil inteiro (sem filtro de UF)")
@@ -1455,7 +1461,7 @@ if __name__ == "__main__":
     parser.add_argument("--ano-fim", type=int, default=None,
                         help="(producao-completa) Ano final (default: ano atual)")
     parser.add_argument("--mes-inicio", type=int, default=None,
-                        help="(producao-completa) Mes inicial - ordem decrescente (default: mes atual)")
+                        help="(producao-completa) Mes inicial - ordem decrescente (default: mes atual - 1, ex: Junho -> Maio)")
     parser.add_argument("--mes-fim", type=int, default=1,
                         help="(producao-completa) Mes final - ordem decrescente (default: 1)")
     parser.add_argument("--intervalo", type=int, default=0,
