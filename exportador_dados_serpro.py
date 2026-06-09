@@ -1174,29 +1174,42 @@ def producao_completa_brasil(ano_inicio=None, ano_fim=None,
     """
     from datetime import datetime
     agora = datetime.now()
+    mes_atual = agora.month
     if ano_fim is None:
         ano_fim = agora.year
     if ano_inicio is None:
-        ano_inicio = 1932  # SERPRO tem dados antigos (>=1930)
+        ano_inicio = 1932  # SERPRO tem dados antigos
+    # IMPORTANTE: mes_inicio NAO pode ser maior que o mes atual,
+    # senao o script busca "Dezembro/2026" no futuro (que nao existe).
+    # Por padrao, comeca no mes ATUAL.
     if mes_inicio is None:
-        mes_inicio = 12  # começa em dezembro
+        mes_inicio = mes_atual
+    else:
+        # Respeita o argumento, mas se for maior que o mes atual e o ano for o ano atual, limita
+        if mes_inicio > mes_atual:
+            mes_inicio = mes_atual
     if mes_fim is None:
         mes_fim = 1
 
     print("\n" + "="*70)
     print("PRODUCAO COMPLETA BRASIL - 1 MES POR VEZ")
+    print(f"  Hoje: {MESES_PT[mes_atual-1]}/{agora.year}")
     print(f"  Range: {ano_inicio}..{ano_fim} | Meses: {mes_inicio}..{mes_fim}")
     print(f"  Intervalo: {intervalo_minutos} min | Limite: {limite_meses or 'infinito'} meses")
     print(f"  Brasil inteiro (sem filtro de UF)")
+    print(f"  Ordem: do mais RECENTE para o mais ANTIGO")
     print("="*70)
 
     # Gera lista de (ano, mes) em ordem DECRESCENTE
+    # - Para o ano_fim: meses de mes_inicio ate 1 (decrescente, limitado a mes_atual)
+    # - Para anos intermediarios: todos os 12 meses (decrescente)
+    # - Para o ano_inicio: meses de 12 ate mes_fim (decrescente)
     combinacoes = []
     for ano in range(ano_fim, ano_inicio - 1, -1):
         if ano == ano_fim:
             meses_ano = range(mes_inicio, 0, -1)
         elif ano == ano_inicio:
-            meses_ano = range(mes_fim, 0, -1) if mes_fim <= 12 else range(1, 13)
+            meses_ano = range(12, mes_fim - 1, -1)
         else:
             meses_ano = range(12, 0, -1)
         for mes in meses_ano:
@@ -1338,8 +1351,8 @@ if __name__ == "__main__":
                         help="(producao-completa) Ano inicial (default: 1932)")
     parser.add_argument("--ano-fim", type=int, default=None,
                         help="(producao-completa) Ano final (default: ano atual)")
-    parser.add_argument("--mes-inicio", type=int, default=12,
-                        help="(producao-completa) Mes inicial - ordem decrescente (default: 12)")
+    parser.add_argument("--mes-inicio", type=int, default=None,
+                        help="(producao-completa) Mes inicial - ordem decrescente (default: mes atual)")
     parser.add_argument("--mes-fim", type=int, default=1,
                         help="(producao-completa) Mes final - ordem decrescente (default: 1)")
     parser.add_argument("--intervalo", type=int, default=0,
