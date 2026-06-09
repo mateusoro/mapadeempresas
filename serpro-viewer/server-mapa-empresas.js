@@ -403,12 +403,18 @@ app.get('/api/relatorio', async (req, res) => {
 
 // ========== STATIC FILES ==========
 
-// Rota dedicada para /relatorio (resolve antes do static, que não auto-resolve .html em /relatorio)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Rotas amigaveis para paginas estaticas
+app.get('/privacy', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+});
+app.get('/privacidade', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+});
 app.get('/relatorio', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'relatorio.html'));
 });
-
-app.use(express.static(path.join(__dirname, 'public')));
 
 // 404 para rotas /api/ inexistentes (antes do fallback SPA).
 // Express 4 não suporta '/api/*' em app.use; checamos manualmente.

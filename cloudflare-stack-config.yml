@@ -1,0 +1,27 @@
+tunnel: a8a05c02-1d16-49de-b8aa-51aebaff69de
+credentials-file: /etc/cloudflared/a8a05c02-1d16-49de-b8aa-51aebaff69de.json
+
+ingress:
+  - hostname: easypanel.n8n-mateus.com
+    service: http://localhost:3000
+  - hostname: mapadeempresas.n8n-mateus.com
+    service: http://localhost:3030
+  - hostname: beszel.n8n-mateus.com
+    service: http://localhost:8090
+  - hostname: evolution-api.n8n-mateus.com
+    service: http://localhost:8095
+  - hostname: filebrowser.n8n-mateus.com
+    service: http://localhost:8085
+  - hostname: mcp.n8n-mateus.com
+    service: http://localhost:3055
+  - hostname: gotenberg.n8n-mateus.com
+    service: http://localhost:3005
+  - hostname: pg.n8n-mateus.com
+    service: tcp://localhost:5432
+  - hostname: n8n.n8n-mateus.com
+    service: http://127.0.0.1:5678
+  - hostname: search.n8n-mateus.com
+    service: http://localhost:5001
+  - hostname: browserless.n8n-mateus.com
+    service: http://localhost:4000
+  - service: http_status:404

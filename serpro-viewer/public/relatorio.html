@@ -263,9 +263,9 @@
     .gridjs-wrapper { box-shadow: none !important; border-radius: 0 !important; }
     .gridjs-container { color: var(--text) !important; padding: 0 !important; }
     .gridjs-table { font-size: 13px !important; font-family: inherit !important; width: 100% !important; background: var(--bg-elevated) !important; }
-    .gridjs-thead { background: var(--bg-subtle) !important; }
+    .gridjs-thead { background: var(--bg-elevated) !important; }
     .gridjs-th {
-        background: var(--bg-subtle) !important;
+        background: var(--bg-elevated) !important;
         color: var(--text) !important;
         font-weight: 600 !important;
         font-size: 11px !important;
@@ -279,7 +279,11 @@
         border-color: var(--border) !important;
         user-select: none !important;
     }
-    .gridjs-th-content { display: flex !important; align-items: center !important; gap: 4px !important; }
+    .gridjs-th-content { display: flex !important; align-items: center !important; gap: 4px !important; color: var(--text) !important; }
+    .gridjs-thead .gridjs-th,
+    .gridjs-thead .gridjs-th-content,
+    .gridjs-thead th,
+    .gridjs-thead th div { color: var(--text) !important; }
     .gridjs-th-sort { color: var(--text-faint) !important; opacity: 0.4 !important; transition: opacity var(--transition) !important; }
     .gridjs-th-sort:hover { opacity: 1 !important; }
     .gridjs-th.sort .gridjs-th-sort { opacity: 1 !important; color: var(--accent) !important; }

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Política de Privacidade - Mapa de Empresas API</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            max-width: 700px;
+            width: 100%;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 40px var(--accent-glow);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .container:hover {
+            transform: translateY(-2px);
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 15px;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-top: 25px;
+            margin-bottom: 10px;
+            color: #93c5fd;
+        }
+
+        p {
+            color: var(--text-muted);
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+            font-weight: 300;
+        }
+
+        ul {
+            list-style-type: none;
+            margin-bottom: 20px;
+        }
+
+        li {
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+            font-size: 1.05rem;
+            font-weight: 300;
+        }
+
+        li::before {
+            content: "✦";
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        a:hover {
+            color: #60a5fa;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Política de Privacidade</h1>
+        <div class="subtitle">Mapa de Empresas API (Custom GPT Action)</div>
+
+        <p>Esta política de privacidade descreve como os dados são tratados ao interagir com a API do <strong>Mapa de Empresas</strong> por meio de um Custom GPT (ChatGPT).</p>
+
+        <h2>1. Coleta e Uso de Informações</h2>
+        <p>A nossa API funciona exclusivamente como uma interface de consulta de dados de utilidade pública (base de dados do Mapa de Empresas - SERPRO). <strong>Não coletamos, armazenamos ou registramos quaisquer dados pessoais</strong> dos usuários do ChatGPT.</p>
+
+        <h2>2. Processamento das Consultas</h2>
+        <ul>
+            <li>As consultas enviadas pelo ChatGPT consistem em parâmetros de busca SQL estruturados (filtros e projeções).</li>
+            <li>Essas consultas são processadas em tempo real em um banco de dados SQLite local, no modo de leitura (Read-Only).</li>
+            <li>Nenhum histórico de consultas ou dados pesquisados é guardado de forma persistente pela API.</li>
+        </ul>
+
+        <h2>3. Compartilhamento de Dados com Terceiros</h2>
+        <p>A API opera de forma fechada e isolada. <strong>Não compartilhamos dados com nenhum parceiro ou serviço externo de terceiros.</strong></p>
+
+        <h2>4. Segurança da Informação</h2>
+        <p>A conexão entre o OpenAI/ChatGPT e o nosso servidor é totalmente criptografada via protocolo HTTPS por meio de um túnel seguro fornecido pela Cloudflare.</p>
+
+        <h2>5. Alterações nesta Política</h2>
+        <p>Esta política pode ser modificada a qualquer momento para refletir atualizações no serviço, mantendo sempre o compromisso de não-coleta de informações privadas.</p>
+
+        <div class="footer">
+            <p>Desenvolvido por <strong>Mateus</strong></p>
+            <p>Se tiver alguma dúvida, entre em contato através do repositório do projeto.</p>
+        </div>
+    </div>
+</body>
+</html>
